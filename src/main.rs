@@ -3,7 +3,7 @@ use std::{
     rc::Rc,
     sync::{
         atomic::{AtomicBool, AtomicI32, AtomicIsize, Ordering},
-        mpsc,
+        mpsc, Arc, Mutex,
     },
     thread,
     time::Duration,
@@ -14,27 +14,36 @@ use slint::{ComponentHandle, Timer, TimerMode};
 mod lyrics;
 mod media;
 
+use lyrics::LyricContext;
 use media::{MediaCommand, MediaController, MediaSnapshot};
 
 slint::include_modules!();
 
+const WINDOW_WIDTH: i32 = 680;
+#[allow(dead_code)]
+const WINDOW_HEIGHT: i32 = 220;
+
 static IS_EXPANDED: AtomicBool = AtomicBool::new(false);
 static SHOW_LYRICS: AtomicBool = AtomicBool::new(false);
-static CURRENT_LYRIC_WIDTH: AtomicI32 = AtomicI32::new(320);
+static CURRENT_LYRIC_WIDTH: AtomicI32 = AtomicI32::new(290);
 static PREV_WNDPROC: AtomicIsize = AtomicIsize::new(0);
 
 fn main() -> Result<(), slint::PlatformError> {
     let window = MainWindow::new()?;
+
+    // Shared lyric context for instant interactive seek-to-lyric callbacks
+    let lyric_context_shared = Arc::new(Mutex::new(LyricContext::default()));
 
     // Channel for dispatching commands from UI thread to background media worker
     let (cmd_tx, cmd_rx) = mpsc::channel::<MediaCommand>();
 
     // Spawn background media controller worker thread with "Doze Off" idle architecture
     let worker_window = window.as_weak();
+    let worker_lyric_ctx = Arc::clone(&lyric_context_shared);
     thread::spawn(move || {
         let mut controller = MediaController::new();
         let mut is_playing = false;
-        let mut lyrics_enabled = false;
+        let mut lyrics_enabled = true; // Always active in expanded mode per rule 1
         let mut cached_lyrics: Option<lyrics::LyricsData> = None;
         let mut last_song_key = String::new();
 
@@ -46,6 +55,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     MediaCommand::Next => controller.skip_next(),
                     MediaCommand::Previous => controller.skip_previous(),
                     MediaCommand::SeekFraction(fraction) => controller.seek_fraction(fraction),
+                    MediaCommand::SeekSeconds(seconds) => controller.seek_seconds(seconds),
                     MediaCommand::ToggleLyrics => {
                         lyrics_enabled = !lyrics_enabled;
                         let enabled = lyrics_enabled;
@@ -69,6 +79,9 @@ fn main() -> Result<(), slint::PlatformError> {
                 let current_song_key = format!("{} - {}", snapshot.title, snapshot.artist);
 
                 let mut current_lyric_text = String::new();
+                let mut prev_lyric_text = String::new();
+                let mut next_lyric_text = String::new();
+                let mut line_progress = 0.0f32;
                 let mut has_lyrics = false;
 
                 if lyrics_enabled && snapshot.title != "No Media Playing" {
@@ -82,28 +95,35 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
 
                     if let Some(lyrics_data) = &cached_lyrics {
-                        if let Some(line) =
-                            lyrics_data.get_current_line(snapshot.elapsed_seconds as f64)
-                        {
-                            current_lyric_text = line.to_string();
-                        }
+                        let ctx = lyrics_data
+                            .get_lyrics_context_detailed(snapshot.elapsed_seconds as f64);
+                        prev_lyric_text = ctx.prev_text.clone();
+                        current_lyric_text = ctx.curr_text.clone();
+                        next_lyric_text = ctx.next_text.clone();
+                        line_progress = ctx.curr_progress;
                         has_lyrics = !lyrics_data.lines.is_empty();
+
+                        if let Ok(mut shared) = worker_lyric_ctx.lock() {
+                            *shared = ctx;
+                        }
                     }
                 }
 
                 let lyric_clone = current_lyric_text.clone();
+                let prev_clone = prev_lyric_text.clone();
+                let curr_clone = current_lyric_text.clone();
+                let next_clone = next_lyric_text.clone();
                 let show_lyrics = lyrics_enabled && has_lyrics;
                 SHOW_LYRICS.store(show_lyrics, Ordering::Relaxed);
 
-                // Dynamically compute island width according to current lyric text length
+                // Dynamically compute island width to guarantee lyrics are never clipped
                 let display_text = if !current_lyric_text.is_empty() {
                     &current_lyric_text
                 } else {
                     &snapshot.title
                 };
                 let char_count = display_text.chars().count();
-                // 104px base for badges + margin, 8.0px per glyph
-                let computed_lyric_w = (char_count as f32 * 8.0 + 104.0).clamp(210.0, 420.0);
+                let computed_lyric_w = (char_count as f32 * 6.8 + 68.0).clamp(290.0, 460.0);
                 CURRENT_LYRIC_WIDTH.store(computed_lyric_w as i32, Ordering::Relaxed);
 
                 let _ = worker_window.upgrade_in_event_loop(move |w| {
@@ -111,6 +131,10 @@ fn main() -> Result<(), slint::PlatformError> {
                     w.set_show_lyrics(show_lyrics);
                     w.set_current_lyric_line(lyric_clone.into());
                     w.set_lyric_width(computed_lyric_w);
+                    w.set_lyric_prev(prev_clone.into());
+                    w.set_lyric_curr(curr_clone.into());
+                    w.set_lyric_next(next_clone.into());
+                    w.set_active_line_progress(line_progress);
                 });
             }
 
@@ -140,6 +164,22 @@ fn main() -> Result<(), slint::PlatformError> {
         let _ = tx_seek.send(MediaCommand::SeekFraction(fraction));
     });
 
+    let tx_lyric_seek = cmd_tx.clone();
+    let lyric_seek_ctx = Arc::clone(&lyric_context_shared);
+    window.on_seek_to_lyric(move |direction| {
+        if let Ok(ctx) = lyric_seek_ctx.lock() {
+            let target_time = match direction {
+                -1 => ctx.prev_time,
+                0 => ctx.curr_time,
+                1 => ctx.next_time,
+                _ => None,
+            };
+            if let Some(t) = target_time {
+                let _ = tx_lyric_seek.send(MediaCommand::SeekSeconds(t));
+            }
+        }
+    });
+
     let tx_lyrics = cmd_tx.clone();
     window.on_toggle_lyrics(move || {
         let _ = tx_lyrics.send(MediaCommand::ToggleLyrics);
@@ -156,9 +196,9 @@ fn main() -> Result<(), slint::PlatformError> {
     let hover_window = window.as_weak();
     let is_hovered = Rc::new(Cell::new(false));
     let collapse_timer = Rc::new(RefCell::new(None::<Timer>));
+    let expand_timer = Rc::new(RefCell::new(None::<Timer>));
 
     let exp_window = window.as_weak();
-    let exp_hovered = Rc::clone(&is_hovered);
     let exp_timer = Rc::clone(&collapse_timer);
     window.on_toggle_expanded(move || {
         if let Some(w) = exp_window.upgrade() {
@@ -170,52 +210,61 @@ fn main() -> Result<(), slint::PlatformError> {
                 if let Some(timer) = exp_timer.borrow_mut().take() {
                     timer.stop();
                 }
-            } else if !exp_hovered.get() && !w.get_is_pinned() {
-                let timer_window = exp_window.clone();
-                let timer = Timer::default();
-                timer.start(
-                    TimerMode::SingleShot,
-                    Duration::from_millis(1500),
-                    move || {
-                        if let Some(w) = timer_window.upgrade() {
-                            if !w.get_is_pinned() {
-                                w.set_is_expanded(false);
-                                IS_EXPANDED.store(false, Ordering::Relaxed);
-                            }
-                        }
-                    },
-                );
-                *exp_timer.borrow_mut() = Some(timer);
             }
         }
     });
 
     let h_timer = Rc::clone(&collapse_timer);
+    let h_expand_timer = Rc::clone(&expand_timer);
     let h_hovered = Rc::clone(&is_hovered);
     let h_window = hover_window.clone();
     window.on_hover_changed(move |hovered| {
         h_hovered.set(hovered);
         if let Some(w) = h_window.upgrade() {
             if hovered {
+                // Cancel any pending collapse timer
                 if let Some(timer) = h_timer.borrow_mut().take() {
                     timer.stop();
                 }
-            } else if w.get_is_expanded() && !w.get_is_pinned() {
-                let timer_window = h_window.clone();
-                let timer = Timer::default();
-                timer.start(
-                    TimerMode::SingleShot,
-                    Duration::from_millis(800),
-                    move || {
-                        if let Some(w) = timer_window.upgrade() {
-                            if !w.get_is_pinned() {
-                                w.set_is_expanded(false);
-                                IS_EXPANDED.store(false, Ordering::Relaxed);
+                // Hover expansion with 80ms snappy debounce
+                if !w.get_is_expanded() {
+                    let exp_win = h_window.clone();
+                    let timer = Timer::default();
+                    timer.start(
+                        TimerMode::SingleShot,
+                        Duration::from_millis(80),
+                        move || {
+                            if let Some(w) = exp_win.upgrade() {
+                                w.set_is_expanded(true);
+                                IS_EXPANDED.store(true, Ordering::Relaxed);
                             }
-                        }
-                    },
-                );
-                *h_timer.borrow_mut() = Some(timer);
+                        },
+                    );
+                    *h_expand_timer.borrow_mut() = Some(timer);
+                }
+            } else {
+                // Cancel pending hover expand timer if mouse exits early
+                if let Some(timer) = h_expand_timer.borrow_mut().take() {
+                    timer.stop();
+                }
+                // Grace period collapse when cursor leaves island
+                if w.get_is_expanded() && !w.get_is_pinned() {
+                    let timer_window = h_window.clone();
+                    let timer = Timer::default();
+                    timer.start(
+                        TimerMode::SingleShot,
+                        Duration::from_millis(250),
+                        move || {
+                            if let Some(w) = timer_window.upgrade() {
+                                if !w.get_is_pinned() {
+                                    w.set_is_expanded(false);
+                                    IS_EXPANDED.store(false, Ordering::Relaxed);
+                                }
+                            }
+                        },
+                    );
+                    *h_timer.borrow_mut() = Some(timer);
+                }
             }
         }
     });
@@ -241,7 +290,7 @@ fn main() -> Result<(), slint::PlatformError> {
         },
     );
 
-    // Live spectrum visualizer timer driving 4 animated bars
+    // Live spectrum visualizer timer driving 4 animated bars (0% CPU when paused)
     let eq_timer = Timer::default();
     let mut eq_tick: f32 = 0.0;
     let eq_weak = window.as_weak();
@@ -292,12 +341,14 @@ fn apply_snapshot(window: &MainWindow, snapshot: MediaSnapshot) {
     } else {
         0.0
     };
+    let remaining = (duration - elapsed).max(0.0);
 
     window.set_track_title(snapshot.title.into());
     window.set_artist_name(snapshot.artist.into());
     window.set_album_name(snapshot.album.into());
     window.set_elapsed_time(format_time(elapsed).into());
     window.set_duration_time(format_time(duration).into());
+    window.set_remaining_time(format!("-{}", format_time(remaining)).into());
     window.set_duration_seconds(duration);
     window.set_progress(progress);
     window.set_is_playing(snapshot.is_playing);
@@ -371,8 +422,7 @@ fn position_overlay(window: &MainWindow) {
     use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN};
 
     let screen_width = unsafe { GetSystemMetrics(SM_CXSCREEN) };
-    let window_width = 480;
-    let x = (screen_width - window_width).max(0) / 2;
+    let x = (screen_width - WINDOW_WIDTH).max(0) / 2;
     window
         .window()
         .set_position(slint::PhysicalPosition::new(x, 0));
@@ -407,17 +457,20 @@ unsafe extern "system" fn window_proc(
         let is_exp = IS_EXPANDED.load(Ordering::Relaxed);
         let show_lyrics = SHOW_LYRICS.load(Ordering::Relaxed);
         let island_w = if is_exp {
-            384
+            620
         } else if show_lyrics {
-            CURRENT_LYRIC_WIDTH.load(Ordering::Relaxed)
+            CURRENT_LYRIC_WIDTH.load(Ordering::Relaxed).max(290)
         } else {
-            184
+            290
         };
-        let island_h = if is_exp { 186 } else { 42 };
-        let island_x = (480 - island_w) / 2;
+        let island_h = if is_exp { 175 } else { 38 };
+        let island_x = (WINDOW_WIDTH - island_w) / 2;
 
-        // Check if cursor falls inside the active island bounds (plus subtle 7px fillets)
-        if pt.x >= island_x - 8 && pt.x <= island_x + island_w + 8 && pt.y >= 0 && pt.y <= island_h
+        // Check if cursor falls inside active island bounds (plus 14px ear flare fillets)
+        if pt.x >= island_x - 14
+            && pt.x <= island_x + island_w + 14
+            && pt.y >= 0
+            && pt.y <= island_h
         {
             return HTCLIENT as _;
         } else {
@@ -439,7 +492,7 @@ fn setup_hit_test() {
         FindWindowW, GetWindowLongPtrW, SetWindowLongPtrW, GWLP_WNDPROC,
     };
 
-    let title: Vec<u16> = "Fidra Music Island\0".encode_utf16().collect();
+    let title: Vec<u16> = "Fira Music Island\0".encode_utf16().collect();
     let hwnd = unsafe { FindWindowW(std::ptr::null(), title.as_ptr()) };
     if !hwnd.is_null() {
         unsafe {

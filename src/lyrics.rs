@@ -13,7 +13,19 @@ pub struct LyricsData {
     pub lines: Vec<LyricLine>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct LyricContext {
+    pub prev_text: String,
+    pub curr_text: String,
+    pub next_text: String,
+    pub prev_time: Option<f64>,
+    pub curr_time: Option<f64>,
+    pub next_time: Option<f64>,
+    pub curr_progress: f32,
+}
+
 impl LyricsData {
+    #[allow(dead_code)]
     pub fn get_current_line(&self, elapsed_sec: f64) -> Option<&str> {
         if self.lines.is_empty() {
             return None;
@@ -29,6 +41,77 @@ impl LyricsData {
         }
 
         active.map(|l| l.text.as_str())
+    }
+
+    /// Returns previous, current, and next lines for multi-line display
+    #[allow(dead_code)]
+    pub fn get_lyrics_context(&self, elapsed_sec: f64) -> (String, String, String) {
+        let ctx = self.get_lyrics_context_detailed(elapsed_sec);
+        (ctx.prev_text, ctx.curr_text, ctx.next_text)
+    }
+
+    /// Returns detailed context including timestamps and progress for progressive sweep & seek
+    pub fn get_lyrics_context_detailed(&self, elapsed_sec: f64) -> LyricContext {
+        if self.lines.is_empty() {
+            return LyricContext::default();
+        }
+
+        let mut active_idx: Option<usize> = None;
+        for (i, line) in self.lines.iter().enumerate() {
+            if line.time_sec <= elapsed_sec + 0.15 {
+                active_idx = Some(i);
+            } else {
+                break;
+            }
+        }
+
+        let curr_idx = match active_idx {
+            Some(i) => i,
+            None => 0,
+        };
+
+        let prev = if curr_idx > 0 {
+            (
+                self.lines[curr_idx - 1].text.clone(),
+                Some(self.lines[curr_idx - 1].time_sec),
+            )
+        } else {
+            (String::new(), None)
+        };
+
+        let curr_time = self.lines.get(curr_idx).map(|l| l.time_sec);
+        let curr_text = self
+            .lines
+            .get(curr_idx)
+            .map(|l| l.text.clone())
+            .unwrap_or_default();
+
+        let next = if curr_idx + 1 < self.lines.len() {
+            (
+                self.lines[curr_idx + 1].text.clone(),
+                Some(self.lines[curr_idx + 1].time_sec),
+            )
+        } else {
+            (String::new(), None)
+        };
+
+        let curr_progress = if let Some(t_curr) = curr_time {
+            let t_end = next.1.unwrap_or(t_curr + 4.0);
+            let duration = (t_end - t_curr).max(0.5);
+            ((elapsed_sec - t_curr) / duration).clamp(0.0, 1.0) as f32
+        } else {
+            0.0
+        };
+
+        LyricContext {
+            prev_text: prev.0,
+            curr_text,
+            next_text: next.0,
+            prev_time: prev.1,
+            curr_time,
+            next_time: next.1,
+            curr_progress,
+        }
     }
 }
 

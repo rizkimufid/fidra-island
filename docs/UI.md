@@ -57,3 +57,13 @@ You MUST obey every rule in this document whenever creating or modifying `.slint
 - **Synchronized Motion:** Both left and right ear-flare `Path` elements MUST define `animate x` with the exact same `duration` and `easing` curve as `island.width` so they never detach or lag during hover/expand/collapse transitions.
 - **Zero-Seam Overlap:** Overlap the inner vertical edge of each ear-flare `Path` by `1px` into the main `island` rectangle (`x: island.x - 13px` for left, `x: island.x + island.width - 1px` for right) and match the exact top background color (`#0B0C10`) so no vertical border seam is visible.
 - **Smooth Tangential Bezier:** Use smooth cubic bezier SVG paths (`M 0 0 C 8 0 14 5 14 14 L 14 0 Z` for left; `M 0 0 L 0 14 C 0 5 6 0 14 0 Z` for right) so the curve meets both the screen top edge and the notch side wall tangentially.
+
+## 7. Synced Lyrics Motion Choreography
+- **Line Transition Curve (`Ease-Out`):** Unlike container morphing, synced lyric line scrolling MUST start fast and decelerate smoothly (`cubic-bezier(0.16, 1.0, 0.3, 1.0)` over `400ms`) so new lines arrive on-beat without feeling sluggish.
+- **Active Line Emphasis:** Transition active lyric lines smoothly (`300ms`) from dimmed inactive styling (`opacity: 0.35`, `#A1A1AA`, `font-weight: 500`) to full prominence (`opacity: 1.0`, `#FFFFFF`, `font-weight: 700`).
+- **Compact Marquee Ticker:** For overflowing track titles or single-line lyrics in compact pill mode, scroll horizontally at a constant `linear` speed with a `1.5s` pause at both start and end positions.
+
+## 8. Word-by-Word Kinetic Lyrics (Apple Music Sing Style)
+- **Spring Word Lift:** Active words MUST subtly lift upward (`y: is-word-active ? -2.5px : 0px`) using a spring overshoot curve (`cubic-bezier(0.34, 1.56, 0.64, 1.0)` over `250ms`) so each syllable feels physically reactive to the beat.
+- **Dual-Layer Progressive Sweep:** Render each word with a dimmed base layer (`#FFFFFF4D`) and an overlaid bright layer (`#FFFFFF`) masked inside a `clip: true` container whose width animates `linear`ly from `0` to `100%` across the word's active duration.
+- **Proportional Fallback:** When only line-level timestamps are available, calculate per-word delay and duration proportionally by character count so the wave sweeps smoothly across the entire line.

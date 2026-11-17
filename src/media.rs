@@ -29,6 +29,7 @@ pub enum MediaCommand {
     Next,
     Previous,
     SeekFraction(f32),
+    SeekSeconds(f64),
     ToggleLyrics,
 }
 
@@ -122,15 +123,11 @@ mod windows_media {
                     }
                 }
 
-                if snapshot.duration_seconds > 0.0 {
-                    snapshot.elapsed_seconds = reported_pos.clamp(0.0, snapshot.duration_seconds);
-                } else {
-                    snapshot.elapsed_seconds = reported_pos.max(0.0);
-                }
+                snapshot.elapsed_seconds = reported_pos;
             }
 
-            if let Ok(props_op) = session.TryGetMediaPropertiesAsync() {
-                if let Ok(props) = props_op.get() {
+            if let Ok(media_props_op) = session.TryGetMediaPropertiesAsync() {
+                if let Ok(props) = media_props_op.get() {
                     if let Ok(title) = props.Title() {
                         let t = title.to_string();
                         if !t.is_empty() {
@@ -147,24 +144,23 @@ mod windows_media {
                         snapshot.album = album.to_string();
                     }
 
-                    if snapshot.title != self.last_thumb_title {
-                        self.last_thumb_title = snapshot.title.clone();
+                    // Check if song changed to invalidate thumbnail cache
+                    let song_key = format!("{} - {}", snapshot.title, snapshot.artist);
+                    if song_key != self.last_thumb_title {
+                        self.last_thumb_title = song_key;
                         self.cached_thumbnail = None;
 
                         if let Ok(thumb_ref) = props.Thumbnail() {
                             if let Ok(stream_op) = thumb_ref.OpenReadAsync() {
                                 if let Ok(stream) = stream_op.get() {
-                                    if let Ok(size) = stream.Size() {
-                                        if size > 0 && size < 5 * 1024 * 1024 {
-                                            if let Ok(reader) =
-                                                DataReader::CreateDataReader(&stream)
-                                            {
-                                                if let Ok(load_op) = reader.LoadAsync(size as u32) {
-                                                    if load_op.get().is_ok() {
-                                                        let mut buffer = vec![0u8; size as usize];
-                                                        if reader.ReadBytes(&mut buffer).is_ok() {
-                                                            self.cached_thumbnail = Some(buffer);
-                                                        }
+                                    let size = stream.Size().unwrap_or(0) as usize;
+                                    if size > 0 && size < 5_000_000 {
+                                        if let Ok(reader) = DataReader::CreateDataReader(&stream) {
+                                            if let Ok(load_op) = reader.LoadAsync(size as u32) {
+                                                if load_op.get().is_ok() {
+                                                    let mut buf = vec![0u8; size];
+                                                    if reader.ReadBytes(&mut buf).is_ok() {
+                                                        self.cached_thumbnail = Some(buf);
                                                     }
                                                 }
                                             }
@@ -210,6 +206,13 @@ mod windows_media {
                 }
             }
         }
+
+        pub fn seek_seconds(&self, seconds: f64) {
+            if let Some(session) = &self.session {
+                let target_ticks = (seconds * 10_000_000.0) as i64;
+                let _ = session.TryChangePlaybackPositionAsync(target_ticks);
+            }
+        }
     }
 }
 
@@ -230,6 +233,7 @@ mod stub_media {
         pub fn skip_next(&self) {}
         pub fn skip_previous(&self) {}
         pub fn seek_fraction(&self, _fraction: f32) {}
+        pub fn seek_seconds(&self, _seconds: f64) {}
     }
 }
 
