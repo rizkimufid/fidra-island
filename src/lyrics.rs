@@ -4,6 +4,13 @@ use serde::Deserialize;
 pub struct LyricLine {
     pub time_sec: f64,
     pub text: String,
+    pub words: Vec<LyricWord>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LyricWord {
+    pub time_sec: f64,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -21,7 +28,10 @@ pub struct LyricContext {
     pub prev_time: Option<f64>,
     pub curr_time: Option<f64>,
     pub next_time: Option<f64>,
-    pub curr_progress: f32,
+    pub word_before: String,
+    pub word_current: String,
+    pub word_after: String,
+    pub has_word_sync: bool,
 }
 
 impl LyricsData {
@@ -50,7 +60,7 @@ impl LyricsData {
         (ctx.prev_text, ctx.curr_text, ctx.next_text)
     }
 
-    /// Returns detailed context including timestamps and progress for progressive sweep & seek
+    /// Returns detailed context including line and optional word timestamps for lyric sync and seek.
     pub fn get_lyrics_context_detailed(&self, elapsed_sec: f64) -> LyricContext {
         if self.lines.is_empty() {
             return LyricContext::default();
@@ -95,12 +105,24 @@ impl LyricsData {
             (String::new(), None)
         };
 
-        let curr_progress = if let Some(t_curr) = curr_time {
-            let t_end = next.1.unwrap_or(t_curr + 4.0);
-            let duration = (t_end - t_curr).max(0.5);
-            ((elapsed_sec - t_curr) / duration).clamp(0.0, 1.0) as f32
+        let words = self.lines.get(curr_idx).map(|line| &line.words);
+        let has_word_sync = words.map(|words| words.len() > 1).unwrap_or(false);
+        let (word_before, word_current, word_after) = if has_word_sync {
+            let words = words.expect("word sync requires parsed word timestamps");
+            let active_idx = words.iter().rposition(|word| word.time_sec <= elapsed_sec);
+            match active_idx {
+                Some(idx) => (
+                    words[..idx].iter().map(|word| word.text.as_str()).collect(),
+                    words[idx].text.clone(),
+                    words[idx + 1..]
+                        .iter()
+                        .map(|word| word.text.as_str())
+                        .collect(),
+                ),
+                None => (String::new(), String::new(), curr_text.clone()),
+            }
         } else {
-            0.0
+            (String::new(), String::new(), String::new())
         };
 
         LyricContext {
@@ -110,7 +132,10 @@ impl LyricsData {
             prev_time: prev.1,
             curr_time,
             next_time: next.1,
-            curr_progress,
+            word_before,
+            word_current,
+            word_after,
+            has_word_sync,
         }
     }
 }
@@ -250,7 +275,7 @@ fn url_encode(input: &str) -> String {
 
 /// Parse standard LRC timestamp lines `[mm:ss.xx] lyric text`
 pub fn parse_lrc(lrc_content: &str) -> Vec<LyricLine> {
-    let mut raw_lines: Vec<(f64, String)> = Vec::new();
+    let mut raw_lines: Vec<(f64, String, Vec<LyricWord>)> = Vec::new();
 
     for line in lrc_content.lines() {
         let line = line.trim();
@@ -285,8 +310,9 @@ pub fn parse_lrc(lrc_content: &str) -> Vec<LyricLine> {
 
         let text = remaining.trim().to_string();
         if !text.is_empty() && !timestamps.is_empty() {
+            let words = parse_word_timestamps(&text);
             for t in timestamps {
-                raw_lines.push((t, text.clone()));
+                raw_lines.push((t, text.clone(), words.clone()));
             }
         }
     }
@@ -295,6 +321,62 @@ pub fn parse_lrc(lrc_content: &str) -> Vec<LyricLine> {
 
     raw_lines
         .into_iter()
-        .map(|(time_sec, text)| LyricLine { time_sec, text })
+        .map(|(time_sec, text, words)| LyricLine {
+            time_sec,
+            text,
+            words,
+        })
         .collect()
+}
+
+fn parse_word_timestamps(text: &str) -> Vec<LyricWord> {
+    let mut words = Vec::new();
+    let mut remaining = text;
+    let mut current_time = None;
+    let mut current_text = String::new();
+
+    while let Some(open_idx) = remaining.find('<') {
+        current_text.push_str(&remaining[..open_idx]);
+        remaining = &remaining[open_idx + 1..];
+        let Some(close_idx) = remaining.find('>') else {
+            current_text.push('<');
+            current_text.push_str(remaining);
+            remaining = "";
+            break;
+        };
+
+        if let Some(time_sec) = parse_timestamp(&remaining[..close_idx]) {
+            if let Some(time_sec) = current_time {
+                if !current_text.is_empty() {
+                    words.push(LyricWord {
+                        time_sec,
+                        text: std::mem::take(&mut current_text),
+                    });
+                }
+            }
+            current_time = Some(time_sec);
+        } else {
+            current_text.push('<');
+            current_text.push_str(&remaining[..=close_idx]);
+        }
+        remaining = &remaining[close_idx + 1..];
+    }
+    current_text.push_str(remaining);
+    if let Some(time_sec) = current_time {
+        if !current_text.is_empty() {
+            words.push(LyricWord {
+                time_sec,
+                text: current_text,
+            });
+        }
+    }
+
+    words
+}
+
+fn parse_timestamp(stamp: &str) -> Option<f64> {
+    let (minutes, seconds) = stamp.split_once(':')?;
+    let minutes = minutes.parse::<f64>().ok()?;
+    let seconds = seconds.replace(':', ".").parse::<f64>().ok()?;
+    Some(minutes * 60.0 + seconds)
 }

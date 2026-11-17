@@ -43,7 +43,6 @@ fn main() -> Result<(), slint::PlatformError> {
     thread::spawn(move || {
         let mut controller = MediaController::new();
         let mut is_playing = false;
-        let mut lyrics_enabled = true; // Always active in expanded mode per rule 1
         let mut cached_lyrics: Option<lyrics::LyricsData> = None;
         let mut last_song_key = String::new();
 
@@ -56,20 +55,6 @@ fn main() -> Result<(), slint::PlatformError> {
                     MediaCommand::Previous => controller.skip_previous(),
                     MediaCommand::SeekFraction(fraction) => controller.seek_fraction(fraction),
                     MediaCommand::SeekSeconds(seconds) => controller.seek_seconds(seconds),
-                    MediaCommand::ToggleLyrics => {
-                        lyrics_enabled = !lyrics_enabled;
-                        let enabled = lyrics_enabled;
-                        if !enabled {
-                            SHOW_LYRICS.store(false, Ordering::Relaxed);
-                        }
-                        let _ = worker_window.upgrade_in_event_loop(move |w| {
-                            w.set_lyrics_active(enabled);
-                            if !enabled {
-                                w.set_show_lyrics(false);
-                                w.set_current_lyric_line("".into());
-                            }
-                        });
-                    }
                 }
             }
 
@@ -81,10 +66,13 @@ fn main() -> Result<(), slint::PlatformError> {
                 let mut current_lyric_text = String::new();
                 let mut prev_lyric_text = String::new();
                 let mut next_lyric_text = String::new();
-                let mut line_progress = 0.0f32;
+                let mut word_before = String::new();
+                let mut word_current = String::new();
+                let mut word_after = String::new();
+                let mut has_word_sync = false;
                 let mut has_lyrics = false;
 
-                if lyrics_enabled && snapshot.title != "No Media Playing" {
+                if snapshot.title != "No Media Playing" {
                     if current_song_key != last_song_key {
                         last_song_key = current_song_key.clone();
                         cached_lyrics = lyrics::fetch_lyrics(
@@ -100,7 +88,10 @@ fn main() -> Result<(), slint::PlatformError> {
                         prev_lyric_text = ctx.prev_text.clone();
                         current_lyric_text = ctx.curr_text.clone();
                         next_lyric_text = ctx.next_text.clone();
-                        line_progress = ctx.curr_progress;
+                        word_before = ctx.word_before.clone();
+                        word_current = ctx.word_current.clone();
+                        word_after = ctx.word_after.clone();
+                        has_word_sync = ctx.has_word_sync;
                         has_lyrics = !lyrics_data.lines.is_empty();
 
                         if let Ok(mut shared) = worker_lyric_ctx.lock() {
@@ -113,7 +104,10 @@ fn main() -> Result<(), slint::PlatformError> {
                 let prev_clone = prev_lyric_text.clone();
                 let curr_clone = current_lyric_text.clone();
                 let next_clone = next_lyric_text.clone();
-                let show_lyrics = lyrics_enabled && has_lyrics;
+                let word_before_clone = word_before.clone();
+                let word_current_clone = word_current.clone();
+                let word_after_clone = word_after.clone();
+                let show_lyrics = has_lyrics;
                 SHOW_LYRICS.store(show_lyrics, Ordering::Relaxed);
 
                 // Dynamically compute island width to guarantee lyrics are never clipped
@@ -134,7 +128,10 @@ fn main() -> Result<(), slint::PlatformError> {
                     w.set_lyric_prev(prev_clone.into());
                     w.set_lyric_curr(curr_clone.into());
                     w.set_lyric_next(next_clone.into());
-                    w.set_active_line_progress(line_progress);
+                    w.set_lyric_word_before(word_before_clone.into());
+                    w.set_lyric_word_current(word_current_clone.into());
+                    w.set_lyric_word_after(word_after_clone.into());
+                    w.set_has_word_sync(has_word_sync);
                 });
             }
 
@@ -180,9 +177,11 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
-    let tx_lyrics = cmd_tx.clone();
+    let lyrics_window = window.as_weak();
     window.on_toggle_lyrics(move || {
-        let _ = tx_lyrics.send(MediaCommand::ToggleLyrics);
+        if let Some(w) = lyrics_window.upgrade() {
+            w.set_lyrics_panel_visible(!w.get_lyrics_panel_visible());
+        }
     });
 
     let pin_window = window.as_weak();
@@ -204,6 +203,9 @@ fn main() -> Result<(), slint::PlatformError> {
         if let Some(w) = exp_window.upgrade() {
             let next_state = !w.get_is_expanded();
             w.set_is_expanded(next_state);
+            if next_state {
+                w.set_lyrics_panel_visible(false);
+            }
             IS_EXPANDED.store(next_state, Ordering::Relaxed);
 
             if !next_state {
@@ -236,6 +238,7 @@ fn main() -> Result<(), slint::PlatformError> {
                         move || {
                             if let Some(w) = exp_win.upgrade() {
                                 w.set_is_expanded(true);
+                                w.set_lyrics_panel_visible(false);
                                 IS_EXPANDED.store(true, Ordering::Relaxed);
                             }
                         },
