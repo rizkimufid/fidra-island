@@ -181,6 +181,9 @@ export component MainWindow inherits Window {
     in-out property <string> lyric-word-current: "";
     in-out property <string> lyric-word-after: "";
     in-out property <bool> has-word-sync: false;
+    in-out property <bool> lyric-transition-active: false;
+    in-out property <bool> lyric-transition-started: false;
+    in-out property <string> lyric-transition-old-line: "";
     in-out property <string> current-time-str: "12:00";
     in-out property <float> battery-level: 1.0;
     in-out property <bool> is-charging: false;
@@ -722,7 +725,49 @@ export component MainWindow inherits Window {
                                 width: 100%;
                                 height: 24px;
 
-                                if has-word-sync: HorizontalLayout {
+                                if lyric-transition-active: Rectangle {
+                                    width: parent.width;
+                                    height: parent.height;
+                                    clip: true;
+
+                                    Text {
+                                        x: 0;
+                                        y: lyric-transition-started ? -parent.height : 0px;
+                                        width: parent.width;
+                                        height: parent.height;
+                                        text: lyric-transition-old-line;
+                                        color: #FFFFFF75;
+                                        font-size: 14.5px;
+                                        font-weight: 700;
+                                        horizontal-alignment: left;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                        animate y {
+                                            duration: 240ms;
+                                            easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
+                                        }
+                                    }
+
+                                    Text {
+                                        x: 0;
+                                        y: lyric-transition-started ? 0px : parent.height;
+                                        width: parent.width;
+                                        height: parent.height;
+                                        text: lyric-curr;
+                                        color: #FFFFFF;
+                                        font-size: 14.5px;
+                                        font-weight: 700;
+                                        horizontal-alignment: left;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                        animate y {
+                                            duration: 240ms;
+                                            easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
+                                        }
+                                    }
+                                }
+
+                                if !lyric-transition-active && has-word-sync: HorizontalLayout {
                                     width: parent.width;
                                     height: parent.height;
                                     spacing: 0px;
@@ -759,7 +804,7 @@ export component MainWindow inherits Window {
                                     }
                                 }
 
-                                if !has-word-sync: Text {
+                                if !lyric-transition-active && !has-word-sync: Text {
                                     x: 0;
                                     y: is-playing ? -1px : 0px;
                                     width: parent.width;

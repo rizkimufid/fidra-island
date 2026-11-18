@@ -61,6 +61,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let mut lyrics_enabled = false;
         let mut cached_lyrics: Option<lyrics::LyricsData> = None;
         let mut last_song_key = String::new();
+        let mut last_lyric_line = String::new();
 
         loop {
             while let Ok((song_key, result)) = lyric_result_rx.try_recv() {
@@ -133,6 +134,11 @@ fn main() -> Result<(), slint::PlatformError> {
                 let word_current_clone = word_current.clone();
                 let word_after_clone = word_after.clone();
                 let show_lyrics = lyrics_enabled && has_lyrics;
+                let lyric_line_changed = !last_lyric_line.is_empty()
+                    && !current_lyric_text.is_empty()
+                    && current_lyric_text != last_lyric_line;
+                let old_lyric_line = last_lyric_line.clone();
+                last_lyric_line = current_lyric_text.clone();
                 SHOW_LYRICS.store(show_lyrics, Ordering::Relaxed);
 
                 // Dynamically compute island width to guarantee lyrics are never clipped
@@ -146,6 +152,25 @@ fn main() -> Result<(), slint::PlatformError> {
                 CURRENT_LYRIC_WIDTH.store(computed_lyric_w as i32, Ordering::Relaxed);
 
                 let _ = worker_window.upgrade_in_event_loop(move |w| {
+                    if lyric_line_changed {
+                        w.set_lyric_transition_old_line(old_lyric_line.into());
+                        w.set_lyric_transition_active(true);
+                        w.set_lyric_transition_started(false);
+                        let weak = w.as_weak();
+                        Timer::single_shot(Duration::from_millis(16), move || {
+                            if let Some(w) = weak.upgrade() {
+                                w.set_lyric_transition_started(true);
+                                let weak = w.as_weak();
+                                Timer::single_shot(Duration::from_millis(280), move || {
+                                    if let Some(w) = weak.upgrade() {
+                                        w.set_lyric_transition_active(false);
+                                        w.set_lyric_transition_started(false);
+                                        w.set_lyric_transition_old_line(String::new().into());
+                                    }
+                                });
+                            }
+                        });
+                    }
                     apply_snapshot(&w, snapshot);
                     w.set_show_lyrics(show_lyrics);
                     w.set_current_lyric_line(lyric_clone.into());
