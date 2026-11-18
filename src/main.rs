@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -25,6 +27,7 @@ const WINDOW_HEIGHT: i32 = 220;
 
 static IS_EXPANDED: AtomicBool = AtomicBool::new(false);
 static SHOW_LYRICS: AtomicBool = AtomicBool::new(false);
+static LYRICS_ENABLED: AtomicBool = AtomicBool::new(false);
 static CURRENT_LYRIC_WIDTH: AtomicI32 = AtomicI32::new(290);
 static PREV_WNDPROC: AtomicIsize = AtomicIsize::new(0);
 
@@ -33,6 +36,18 @@ fn main() -> Result<(), slint::PlatformError> {
 
     // Shared lyric context for instant interactive seek-to-lyric callbacks
     let lyric_context_shared = Arc::new(Mutex::new(LyricContext::default()));
+
+    // Keep network lyric lookups away from the media polling thread so a slow
+    // response cannot freeze elapsed-time and playback-state updates.
+    let (lyric_fetch_tx, lyric_fetch_rx) = mpsc::channel::<(String, String, String, f64)>();
+    let (lyric_result_tx, lyric_result_rx) =
+        mpsc::channel::<(String, Option<lyrics::LyricsData>)>();
+    thread::spawn(move || {
+        while let Ok((song_key, title, artist, duration)) = lyric_fetch_rx.recv() {
+            let result = lyrics::fetch_lyrics(&title, &artist, duration);
+            let _ = lyric_result_tx.send((song_key, result));
+        }
+    });
 
     // Channel for dispatching commands from UI thread to background media worker
     let (cmd_tx, cmd_rx) = mpsc::channel::<MediaCommand>();
@@ -43,10 +58,17 @@ fn main() -> Result<(), slint::PlatformError> {
     thread::spawn(move || {
         let mut controller = MediaController::new();
         let mut is_playing = false;
+        let mut lyrics_enabled = false;
         let mut cached_lyrics: Option<lyrics::LyricsData> = None;
         let mut last_song_key = String::new();
 
         loop {
+            while let Ok((song_key, result)) = lyric_result_rx.try_recv() {
+                if song_key == last_song_key {
+                    cached_lyrics = result;
+                }
+            }
+
             // Process any pending commands from UI
             while let Ok(cmd) = cmd_rx.try_recv() {
                 match cmd {
@@ -55,6 +77,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     MediaCommand::Previous => controller.skip_previous(),
                     MediaCommand::SeekFraction(fraction) => controller.seek_fraction(fraction),
                     MediaCommand::SeekSeconds(seconds) => controller.seek_seconds(seconds),
+                    MediaCommand::SetLyricsEnabled(enabled) => lyrics_enabled = enabled,
                 }
             }
 
@@ -72,14 +95,16 @@ fn main() -> Result<(), slint::PlatformError> {
                 let mut has_word_sync = false;
                 let mut has_lyrics = false;
 
-                if snapshot.title != "No Media Playing" {
+                if lyrics_enabled && snapshot.title != "No Media Playing" {
                     if current_song_key != last_song_key {
                         last_song_key = current_song_key.clone();
-                        cached_lyrics = lyrics::fetch_lyrics(
-                            &snapshot.title,
-                            &snapshot.artist,
+                        cached_lyrics = None;
+                        let _ = lyric_fetch_tx.send((
+                            current_song_key.clone(),
+                            snapshot.title.clone(),
+                            snapshot.artist.clone(),
                             snapshot.duration_seconds as f64,
-                        );
+                        ));
                     }
 
                     if let Some(lyrics_data) = &cached_lyrics {
@@ -107,7 +132,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 let word_before_clone = word_before.clone();
                 let word_current_clone = word_current.clone();
                 let word_after_clone = word_after.clone();
-                let show_lyrics = has_lyrics;
+                let show_lyrics = lyrics_enabled && has_lyrics;
                 SHOW_LYRICS.store(show_lyrics, Ordering::Relaxed);
 
                 // Dynamically compute island width to guarantee lyrics are never clipped
@@ -178,9 +203,13 @@ fn main() -> Result<(), slint::PlatformError> {
     });
 
     let lyrics_window = window.as_weak();
+    let tx_lyrics = cmd_tx.clone();
     window.on_toggle_lyrics(move || {
         if let Some(w) = lyrics_window.upgrade() {
-            w.set_lyrics_panel_visible(!w.get_lyrics_panel_visible());
+            let enabled = !w.get_lyrics_enabled();
+            w.set_lyrics_enabled(enabled);
+            LYRICS_ENABLED.store(enabled, Ordering::Relaxed);
+            let _ = tx_lyrics.send(MediaCommand::SetLyricsEnabled(enabled));
         }
     });
 
@@ -203,9 +232,6 @@ fn main() -> Result<(), slint::PlatformError> {
         if let Some(w) = exp_window.upgrade() {
             let next_state = !w.get_is_expanded();
             w.set_is_expanded(next_state);
-            if next_state {
-                w.set_lyrics_panel_visible(false);
-            }
             IS_EXPANDED.store(next_state, Ordering::Relaxed);
 
             if !next_state {
@@ -238,7 +264,6 @@ fn main() -> Result<(), slint::PlatformError> {
                         move || {
                             if let Some(w) = exp_win.upgrade() {
                                 w.set_is_expanded(true);
-                                w.set_lyrics_panel_visible(false);
                                 IS_EXPANDED.store(true, Ordering::Relaxed);
                             }
                         },
@@ -338,7 +363,11 @@ fn main() -> Result<(), slint::PlatformError> {
 
 fn apply_snapshot(window: &MainWindow, snapshot: MediaSnapshot) {
     let duration = snapshot.duration_seconds.max(0.0);
-    let elapsed = snapshot.elapsed_seconds.clamp(0.0, duration.max(0.001));
+    let elapsed = if duration > 0.0 {
+        snapshot.elapsed_seconds.clamp(0.0, duration)
+    } else {
+        snapshot.elapsed_seconds.max(0.0)
+    };
     let progress = if duration > 0.0 {
         elapsed / duration
     } else {
@@ -351,7 +380,14 @@ fn apply_snapshot(window: &MainWindow, snapshot: MediaSnapshot) {
     window.set_album_name(snapshot.album.into());
     window.set_elapsed_time(format_time(elapsed).into());
     window.set_duration_time(format_time(duration).into());
-    window.set_remaining_time(format!("-{}", format_time(remaining)).into());
+    window.set_remaining_time(
+        if duration > 0.0 {
+            format!("-{}", format_time(remaining))
+        } else {
+            "—".to_string()
+        }
+        .into(),
+    );
     window.set_duration_seconds(duration);
     window.set_progress(progress);
     window.set_is_playing(snapshot.is_playing);
@@ -459,8 +495,10 @@ unsafe extern "system" fn window_proc(
 
         let is_exp = IS_EXPANDED.load(Ordering::Relaxed);
         let show_lyrics = SHOW_LYRICS.load(Ordering::Relaxed);
-        let island_w = if is_exp {
-            620
+        let island_w = if is_exp && LYRICS_ENABLED.load(Ordering::Relaxed) {
+            610
+        } else if is_exp {
+            320
         } else if show_lyrics {
             CURRENT_LYRIC_WIDTH.load(Ordering::Relaxed).max(290)
         } else {
@@ -483,25 +521,81 @@ unsafe extern "system" fn window_proc(
 
     let prev = PREV_WNDPROC.load(Ordering::Relaxed);
     if prev != 0 {
-        CallWindowProcW(Some(std::mem::transmute(prev)), hwnd, msg, wparam, lparam)
+        let prev_proc = std::mem::transmute::<
+            isize,
+            windows_sys::Win32::UI::WindowsAndMessaging::WNDPROC,
+        >(prev);
+        CallWindowProcW(prev_proc, hwnd, msg, wparam, lparam)
     } else {
         windows_sys::Win32::UI::WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam)
     }
 }
 
 #[cfg(target_os = "windows")]
+struct WindowLookup {
+    process_id: u32,
+    hwnd: windows_sys::Win32::Foundation::HWND,
+}
+
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn find_own_window(
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    parameter: windows_sys::Win32::Foundation::LPARAM,
+) -> windows_sys::Win32::Foundation::BOOL {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetWindowThreadProcessId, IsWindowVisible};
+
+    let lookup = &mut *(parameter as *mut WindowLookup);
+    let mut process_id = 0;
+    GetWindowThreadProcessId(hwnd, &mut process_id);
+    if process_id == lookup.process_id && IsWindowVisible(hwnd) != 0 {
+        lookup.hwnd = hwnd;
+        0
+    } else {
+        1
+    }
+}
+
+#[cfg(target_os = "windows")]
 fn setup_hit_test() {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        FindWindowW, GetWindowLongPtrW, SetWindowLongPtrW, GWLP_WNDPROC,
+        EnumWindows, GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWLP_WNDPROC,
+        GWL_EXSTYLE, HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        SW_HIDE, SW_SHOWNOACTIVATE, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
     };
 
-    let title: Vec<u16> = "Fira Music Island\0".encode_utf16().collect();
-    let hwnd = unsafe { FindWindowW(std::ptr::null(), title.as_ptr()) };
+    let mut lookup = WindowLookup {
+        process_id: std::process::id(),
+        hwnd: std::ptr::null_mut(),
+    };
+    unsafe {
+        EnumWindows(
+            Some(find_own_window),
+            &mut lookup as *mut WindowLookup as isize,
+        );
+    }
+    let hwnd = lookup.hwnd;
     if !hwnd.is_null() {
         unsafe {
+            // Hide briefly so Explorer re-evaluates the taskbar entry after the
+            // tool-window style is applied.
+            ShowWindow(hwnd, SW_HIDE);
+            let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+            let ex_style = (ex_style | WS_EX_TOOLWINDOW as isize) & !(WS_EX_APPWINDOW as isize);
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style);
+            SetWindowPos(
+                hwnd,
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+            );
+
             let prev = GetWindowLongPtrW(hwnd, GWLP_WNDPROC);
             PREV_WNDPROC.store(prev, Ordering::Relaxed);
             SetWindowLongPtrW(hwnd, GWLP_WNDPROC, window_proc as *const () as isize);
+            ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         }
     }
 }

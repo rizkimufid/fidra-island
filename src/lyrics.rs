@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub struct LyricLine {
@@ -75,10 +76,7 @@ impl LyricsData {
             }
         }
 
-        let curr_idx = match active_idx {
-            Some(i) => i,
-            None => 0,
-        };
+        let curr_idx = active_idx.unwrap_or_default();
 
         let prev = if curr_idx > 0 {
             (
@@ -201,9 +199,13 @@ pub fn fetch_lyrics(title: &str, artist: &str, duration_sec: f64) -> Option<Lyri
     }
 
     let track_key = format!("{} - {}", clean_title, clean_artist);
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(5)))
+        .build()
+        .into();
 
     // 1. Try LRCLIB GET (Exact match)
-    if let Some(lrc) = try_lrclib_get(&clean_title, &clean_artist, duration_sec) {
+    if let Some(lrc) = try_lrclib_get(&agent, &clean_title, &clean_artist, duration_sec) {
         let lines = parse_lrc(&lrc);
         if !lines.is_empty() {
             return Some(LyricsData { track_key, lines });
@@ -211,7 +213,7 @@ pub fn fetch_lyrics(title: &str, artist: &str, duration_sec: f64) -> Option<Lyri
     }
 
     // 2. Try LRCLIB SEARCH (Fuzzy query fallback)
-    if let Some(lrc) = try_lrclib_search(&clean_title, &clean_artist) {
+    if let Some(lrc) = try_lrclib_search(&agent, &clean_title, &clean_artist) {
         let lines = parse_lrc(&lrc);
         if !lines.is_empty() {
             return Some(LyricsData { track_key, lines });
@@ -221,29 +223,34 @@ pub fn fetch_lyrics(title: &str, artist: &str, duration_sec: f64) -> Option<Lyri
     None
 }
 
-fn try_lrclib_get(title: &str, artist: &str, duration_sec: f64) -> Option<String> {
+fn try_lrclib_get(
+    agent: &ureq::Agent,
+    title: &str,
+    artist: &str,
+    duration_sec: f64,
+) -> Option<String> {
     let mut url = format!(
         "https://lrclib.net/api/get?track_name={}&artist_name={}",
         url_encode(title),
         url_encode(artist)
     );
-    if duration_sec >= 1.0 && duration_sec <= 7200.0 {
+    if (1.0..=7200.0).contains(&duration_sec) {
         url.push_str(&format!("&duration={}", duration_sec.round() as u64));
     }
 
-    let mut resp = ureq::get(&url).call().ok()?;
+    let mut resp = agent.get(&url).call().ok()?;
     let json: LrclibResponse = resp.body_mut().read_json().ok()?;
     json.synced_lyrics.filter(|s| !s.trim().is_empty())
 }
 
-fn try_lrclib_search(title: &str, artist: &str) -> Option<String> {
+fn try_lrclib_search(agent: &ureq::Agent, title: &str, artist: &str) -> Option<String> {
     let query = format!("{} {}", title, artist);
     let url = format!(
         "https://lrclib.net/api/search?q={}",
         url_encode(query.trim())
     );
 
-    let mut resp = ureq::get(&url).call().ok()?;
+    let mut resp = agent.get(&url).call().ok()?;
     let list: Vec<LrclibResponse> = resp.body_mut().read_json().ok()?;
     for item in list {
         if let Some(synced) = item.synced_lyrics {

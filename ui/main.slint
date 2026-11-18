@@ -171,7 +171,7 @@ export component MainWindow inherits Window {
     in property <bool> is-playing: false;
     in-out property <bool> is-expanded: false;
     in-out property <bool> is-pinned: false;
-    in-out property <bool> lyrics-panel-visible: false;
+    in-out property <bool> lyrics-enabled: false;
     in-out property <bool> show-lyrics: false;
     in-out property <string> current-lyric-line: "";
     in-out property <string> lyric-prev: "";
@@ -224,7 +224,7 @@ export component MainWindow inherits Window {
     }
 
     in-out property <length> target-island-width: is-expanded
-        ? (lyrics-panel-visible ? 610px : 320px)
+        ? (lyrics-enabled ? 610px : 320px)
         : (show-lyrics
         ? Math.clamp(lyric-width, 280px, 420px)
         : (compact-touch.has-hover ? 310px : 290px));
@@ -456,9 +456,9 @@ export component MainWindow inherits Window {
 
                 // 2-Column Content Container
                 HorizontalLayout {
-                    x: lyrics-panel-visible ? 20px : (parent.width - 240px) / 2;
+                    x: lyrics-enabled ? 20px : (parent.width - 240px) / 2;
                     y: 16px;
-                    width: lyrics-panel-visible ? parent.width - 40px : 240px;
+                    width: lyrics-enabled ? parent.width - 40px : 240px;
                     height: parent.height - 32px;
                     spacing: 24px;
 
@@ -665,7 +665,7 @@ export component MainWindow inherits Window {
                         horizontal-stretch: 1;
                         height: 100%;
                         clip: true;
-                        opacity: (is-expanded && lyrics-panel-visible) ? 1.0 : 0.0;
+                        opacity: (is-expanded && lyrics-enabled) ? 1.0 : 0.0;
                         visible: self.opacity > 0.01;
 
                         animate opacity {
@@ -837,11 +837,11 @@ export component MainWindow inherits Window {
                         button-size: 22px;
                         icon-size: 13px;
                         icon-source: @image-url("../assets/icons/lyrics.svg");
-                        icon-color: lyrics-panel-visible ? #1ED760 : #FFFFFF;
-                        bg-color: lyrics-panel-visible ? #1ED76022 : transparent;
-                        border-col: lyrics-panel-visible ? #1ED76055 : transparent;
+                        icon-color: lyrics-enabled ? #1ED760 : #FFFFFF;
+                        bg-color: lyrics-enabled ? #1ED76022 : transparent;
+                        border-col: lyrics-enabled ? #1ED76055 : transparent;
                         radius: 6px;
-                        opacity: lyrics-panel-visible || self.has-hover ? 1.0 : 0.45;
+                        opacity: lyrics-enabled || self.has-hover ? 1.0 : 0.45;
                         clicked => { root.toggle-lyrics(); }
                     }
 

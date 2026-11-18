@@ -30,6 +30,7 @@ pub enum MediaCommand {
     Previous,
     SeekFraction(f32),
     SeekSeconds(f64),
+    SetLyricsEnabled(bool),
 }
 
 #[cfg(target_os = "windows")]
@@ -52,6 +53,11 @@ mod windows_media {
         position_anchor: Option<(f32, Instant)>,
         last_timeline_updated: Option<i64>,
         pending_seek: Option<(f32, Instant)>,
+        last_title: String,
+        last_artist: String,
+        last_album: String,
+        last_duration_seconds: f32,
+        last_playing: bool,
     }
 
     impl MediaController {
@@ -68,6 +74,11 @@ mod windows_media {
                 position_anchor: None,
                 last_timeline_updated: None,
                 pending_seek: None,
+                last_title: String::new(),
+                last_artist: String::new(),
+                last_album: String::new(),
+                last_duration_seconds: 0.0,
+                last_playing: false,
             }
         }
 
@@ -92,23 +103,41 @@ mod windows_media {
                     self.position_anchor = None;
                     self.last_timeline_updated = None;
                     self.pending_seek = None;
+                    self.last_title.clear();
+                    self.last_artist.clear();
+                    self.last_album.clear();
+                    self.last_duration_seconds = 0.0;
+                    self.last_playing = false;
                     return Ok(MediaSnapshot::default());
                 }
             };
 
             let mut snapshot = MediaSnapshot::default();
+            if !self.last_title.is_empty() {
+                snapshot.title = self.last_title.clone();
+            }
+            if !self.last_artist.is_empty() {
+                snapshot.artist = self.last_artist.clone();
+            }
+            snapshot.album = self.last_album.clone();
+            snapshot.is_playing = self.last_playing;
 
             if let Ok(info) = session.GetPlaybackInfo() {
                 if let Ok(status) = info.PlaybackStatus() {
-                    snapshot.is_playing =
+                    self.last_playing =
                         status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
+                    snapshot.is_playing = self.last_playing;
                 }
             }
 
+            let timeline_read_at = Instant::now();
             let mut timeline_sample = None;
             if let Ok(timeline) = session.GetTimelineProperties() {
                 if let Ok(end) = timeline.EndTime() {
-                    snapshot.duration_seconds = (end.Duration as f32) / 10_000_000.0;
+                    let duration = (end.Duration as f32) / 10_000_000.0;
+                    if duration.is_finite() && duration > 0.0 {
+                        snapshot.duration_seconds = duration;
+                    }
                 }
 
                 if let Ok(pos) = timeline.Position() {
@@ -197,11 +226,24 @@ mod windows_media {
             }
 
             let song_key = format!("{} - {}", snapshot.title, snapshot.artist);
-            if song_key != self.last_song_key {
+            let track_changed =
+                snapshot.title != "No Media Playing" && song_key != self.last_song_key;
+            if track_changed {
                 self.last_song_key = song_key;
                 self.position_anchor = None;
                 self.last_timeline_updated = None;
                 self.pending_seek = None;
+                self.last_duration_seconds = 0.0;
+            }
+            if snapshot.title != "No Media Playing" {
+                self.last_title = snapshot.title.clone();
+                self.last_artist = snapshot.artist.clone();
+                self.last_album = snapshot.album.clone();
+            }
+            if snapshot.duration_seconds > 0.0 {
+                self.last_duration_seconds = snapshot.duration_seconds;
+            } else {
+                snapshot.duration_seconds = self.last_duration_seconds;
             }
 
             let now = Instant::now();
@@ -222,14 +264,19 @@ mod windows_media {
                     (Some(updated), Some(previous)) => updated > previous,
                     (Some(_), None) => true,
                     // Without a Windows update timestamp, only use the initial sample.
-                    (None, _) => self.position_anchor.is_none(),
+                    (None, _) => {
+                        self.position_anchor.is_none()
+                            || fallback_position
+                                .map(|fallback| position > fallback + 0.25)
+                                .unwrap_or(false)
+                    }
                 };
 
                 if seek_match {
                     self.pending_seek = None;
                 } else if let Some((target, seek_time)) = self.pending_seek {
                     if now.duration_since(seek_time).as_secs_f32() < 2.0 {
-                        return Some(target);
+                        return Some((fallback_position.unwrap_or(target), false));
                     }
                     self.pending_seek = None;
                 }
@@ -238,14 +285,21 @@ mod windows_media {
                     if let Some(updated) = sample_updated {
                         self.last_timeline_updated = Some(updated);
                     }
-                    Some(position)
+                    Some((position, true))
                 } else {
                     // Re-reading an unchanged Windows timeline sample must not reset
                     // the monotonic estimate to an old position.
-                    fallback_position
+                    fallback_position.map(|position| (position, false))
                 }
             });
-            let position = reported.or(fallback_position).unwrap_or(0.0);
+            let (mut position, anchored_from_sample) = reported
+                .or_else(|| fallback_position.map(|position| (position, false)))
+                .unwrap_or((0.0, false));
+            if anchored_from_sample && snapshot.is_playing {
+                // Metadata/artwork calls below can take time; keep that latency
+                // from making the displayed position lag behind playback.
+                position += now.duration_since(timeline_read_at).as_secs_f32();
+            }
             let position = if duration > 0.0 {
                 position.clamp(0.0, duration)
             } else {
