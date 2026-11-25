@@ -1,8 +1,10 @@
 // Fidra Island — 2-Column Adaptive Dynamic Island Layout & Motion Graphics
 
-import { BatteryRing } from "components/battery_ring.slint";
-import { EqualizerMini } from "components/equalizer.slint";
-import { IconButton, PlayPauseButton } from "components/controls.slint";
+import { IconButton } from "components/controls.slint";
+import { EarFlares } from "components/ear_flares.slint";
+import { CompactLayer } from "components/compact_layer.slint";
+import { PlayerColumn } from "components/player_column.slint";
+import { LyricsColumn } from "components/lyrics_column.slint";
 
 export component MainWindow inherits Window {
     title: "Fidra Island";
@@ -27,16 +29,12 @@ export component MainWindow inherits Window {
     in-out property <bool> lyrics-enabled: false;
     in-out property <bool> show-lyrics: false;
     in-out property <string> current-lyric-line: "";
-    in-out property <string> lyric-prev: "";
-    in-out property <string> lyric-curr: "";
-    in-out property <string> lyric-next: "";
+    in-out property <[string]> lyric-lines;
+    in-out property <int> lyric-index: 0;
     in-out property <string> lyric-word-before: "";
     in-out property <string> lyric-word-current: "";
     in-out property <string> lyric-word-after: "";
     in-out property <bool> has-word-sync: false;
-    in-out property <bool> lyric-transition-active: false;
-    in-out property <bool> lyric-transition-started: false;
-    in-out property <string> lyric-transition-old-line: "";
     in-out property <string> current-time-str: "00:00";
     in-out property <float> battery-level: 1.0;
     in-out property <bool> is-charging: false;
@@ -50,6 +48,9 @@ export component MainWindow inherits Window {
     in property <float> eq-bar4: 3.0;
     in-out property <length> lyric-width: 310px;
 
+    // Dynamic adaptive ambient color extracted from current album art
+    in property <color> ambient-color: #38BDF8;
+
     callback toggle-playback();
     callback skip-next();
     callback skip-previous();
@@ -62,16 +63,12 @@ export component MainWindow inherits Window {
 
     out property <bool> is-mouse-inside:
         island-touch.has-hover
-        || compact-touch.has-hover
+        || compact-comp.has-hover
+        || player-comp.has-hover
+        || lyrics-comp.has-hover
         || pin-btn.has-hover
         || lyrics-btn.has-hover
-        || collapse-btn.has-hover
-        || prev-btn.has-hover
-        || play-btn.has-hover
-        || next-btn.has-hover
-        || prev-touch.has-hover
-        || next-touch.has-hover
-        || seek-touch.has-hover;
+        || collapse-btn.has-hover;
 
     changed is-mouse-inside => {
         root.hover-changed(self.is-mouse-inside);
@@ -81,7 +78,7 @@ export component MainWindow inherits Window {
         ? (lyrics-enabled ? 610px : 320px)
         : (show-lyrics
         ? Math.clamp(lyric-width, 280px, 420px)
-        : (compact-touch.has-hover ? 310px : 290px));
+        : (compact-comp.has-hover ? 310px : 290px));
 
     in-out property <length> current-island-width: target-island-width;
     animate current-island-width {
@@ -99,7 +96,7 @@ export component MainWindow inherits Window {
         height: is-expanded ? 185px : 48px;
         background: transparent;
 
-        // Main Obsidian Container (Solid #09090B top so wings match 100%)
+        // Main Obsidian Container (Solid #09090B top matching tangential ear flares)
         island := Rectangle {
             x: 14px;
             y: -12px;
@@ -110,26 +107,48 @@ export component MainWindow inherits Window {
             background: @linear-gradient(180deg, #09090B 0%, #0E1015 100%);
             border-width: 1px;
             border-color: #262936;
-                    // Hapus drop-shadow-blur dinamis agar tidak lag saat animasi width/height!
-                    clip: true;
+            clip: true;
 
             animate height, border-bottom-left-radius, border-bottom-right-radius {
                 duration: is-expanded ? 380ms : 320ms;
                 easing: is-expanded ? cubic-bezier(0.34, 1.3, 0.64, 1.0) : cubic-bezier(0.22, 1.0, 0.36, 1.0);
             }
 
-            // Subtle warm ambient glow behind album art (left side only, soft fade)
+            // Dynamic Adaptive Ambient Glow (Soft diffuse wash across entire island background)
             Rectangle {
-                x: -20px;
-                y: 12px;
-                width: 240px;
-                height: 174px;
-                opacity: is-expanded ? 0.22 : 0.0;
-                background: @radial-gradient(circle, #FF5D3B55 0%, #3B82F622 45%, transparent 72%);
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: parent.height;
+                opacity: is-expanded ? (has-album-art ? 0.18 : 0.08) : 0.0;
+                background: @radial-gradient(circle, root.ambient-color 0%, transparent 80%);
+                animate opacity {
+                    duration: 500ms;
+                    easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
+                }
+            }
+
+            // Secondary localized soft glow behind the album art
+            Rectangle {
+                x: 10px;
+                y: 10px;
+                width: 140px;
+                height: 140px;
+                opacity: is-expanded ? (has-album-art ? 0.35 : 0.10) : 0.0;
+                background: @radial-gradient(circle, root.ambient-color 0%, transparent 70%);
                 animate opacity {
                     duration: 400ms;
                     easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
                 }
+            }
+
+            // 1px Specular Top Rim Highlight for physical glass realism
+            Rectangle {
+                x: 0;
+                y: 12px;
+                width: 100%;
+                height: 1px;
+                background: @linear-gradient(90deg, transparent 5%, #FFFFFF2E 30%, #FFFFFF40 50%, #FFFFFF2E 70%, transparent 95%);
             }
 
             island-touch := TouchArea {
@@ -154,146 +173,26 @@ export component MainWindow inherits Window {
                     easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
                 }
 
-                compact-touch := TouchArea {
-                    enabled: !is-expanded;
-                    mouse-cursor: pointer;
-                    clicked => { root.toggle-expanded(); }
-                }
-
-                // State 1: Time + Title + Battery
-                if !show-lyrics: HorizontalLayout {
-                    padding-left: 12px;
-                    padding-right: 12px;
-                    spacing: 8px;
-                    alignment: center;
-
-                    Rectangle {
-                        height: 22px;
-                        y: (parent.height - self.height) / 2;
-                        border-radius: 11px;
-                        background: #14161F;
-                        border-width: 1px;
-                        border-color: #242938;
-
-                        HorizontalLayout {
-                            padding-left: 8px;
-                            padding-right: 8px;
-                            spacing: 5px;
-                            alignment: center;
-
-                            Rectangle {
-                                width: 5px;
-                                height: 5px;
-                                y: (parent.height - self.height) / 2;
-                                border-radius: 2.5px;
-                                background: #38BDF8;
-                            }
-
-                            Text {
-                                text: current-time-str;
-                                color: #E2E8F0;
-                                font-size: 11px;
-                                font-weight: 700;
-                                vertical-alignment: center;
-                            }
-                        }
-                    }
-
-                    Text {
-                        text: track-title;
-                        color: #F8FAFC;
-                        font-size: 11.5px;
-                        font-weight: 600;
-                        vertical-alignment: center;
-                        horizontal-alignment: center;
-                        overflow: elide;
-                        horizontal-stretch: 1;
-                    }
-
-                    Rectangle {
-                        height: 22px;
-                        y: (parent.height - self.height) / 2;
-                        border-radius: 11px;
-                        background: #14161F;
-                        border-width: 1px;
-                        border-color: #242938;
-
-                        HorizontalLayout {
-                            padding-left: 8px;
-                            padding-right: 8px;
-                            spacing: 5px;
-                            alignment: center;
-
-                            Text {
-                                text: Math.round(Math.clamp(battery-level, 0.0, 1.0) * 100) + "%";
-                                color: is-charging ? #4ADE80 : (battery-level < 0.2 ? #F87171 : #D6DCEE);
-                                font-size: 11px;
-                                font-weight: 700;
-                                vertical-alignment: center;
-                            }
-
-                            BatteryRing {
-                                y: (parent.height - self.height) / 2;
-                                progress: battery-level;
-                                is-charging: is-charging;
-                                arc-path: battery-arc-path;
-                            }
-                        }
-                    }
-                }
-
-                // State 2: Compact Lyrics Pill
-                if show-lyrics: HorizontalLayout {
-                    padding-left: 14px;
-                    padding-right: 14px;
-                    spacing: 8px;
-                    alignment: center;
-
-                    Rectangle {
-                        width: 20px;
-                        height: 20px;
-                        y: (parent.height - self.height) / 2;
-                        border-radius: 6px;
-                        background: #14261B;
-                        border-width: 1px;
-                        border-color: #224730;
-
-                        Image {
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
-                            width: 11px;
-                            height: 11px;
-                            source: @image-url("../assets/icons/music.svg");
-                            colorize: #1ED760;
-                            image-fit: contain;
-                        }
-                    }
-
-                    Text {
-                        text: current-lyric-line != "" ? current-lyric-line : track-title;
-                        color: #F4F4F6;
-                        font-size: 12px;
-                        font-weight: 600;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                        overflow: elide;
-                        horizontal-stretch: 1;
-                    }
-
-                    EqualizerMini {
-                        y: (parent.height - self.height) / 2;
-                        is-playing: is-playing;
-                        bar-color: #1ED760;
-                        bar1: root.eq-bar1;
-                        bar2: root.eq-bar2;
-                        bar3: root.eq-bar3;
-                        bar4: root.eq-bar4;
-                    }
+                compact-comp := CompactLayer {
+                    is-expanded: root.is-expanded;
+                    show-lyrics: root.show-lyrics;
+                    track-title: root.track-title;
+                    current-lyric-line: root.current-lyric-line;
+                    current-time-str: root.current-time-str;
+                    battery-level: root.battery-level;
+                    is-charging: root.is-charging;
+                    battery-arc-path: root.battery-arc-path;
+                    is-playing: root.is-playing;
+                    eq-bar1: root.eq-bar1;
+                    eq-bar2: root.eq-bar2;
+                    eq-bar3: root.eq-bar3;
+                    eq-bar4: root.eq-bar4;
+                    toggle-expanded => { root.toggle-expanded(); }
                 }
             }
 
             // ==========================================
-            // EXPANDED LAYER (2-Column Split: Player + Apple Music Lyrics)
+            // EXPANDED LAYER (2-Column Split: Player + Lyrics)
             // ==========================================
             expanded-layer := Rectangle {
                 x: 0;
@@ -308,7 +207,6 @@ export component MainWindow inherits Window {
                     easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
                 }
 
-                // 2-Column Content Container
                 HorizontalLayout {
                     x: lyrics-enabled ? 20px : (parent.width - 240px) / 2;
                     y: 16px;
@@ -316,412 +214,41 @@ export component MainWindow inherits Window {
                     height: parent.height - 32px;
                     spacing: 24px;
 
-                    // ======================================
-                    // COLUMN 1 (LEFT): MUSIC PLAYER (240px)
-                    // ======================================
-                    VerticalLayout {
-                        width: 240px;
-                        height: 100%;
-                        spacing: 12px;
-                        alignment: center;
-
-                        // Wave 1: Album Art + Track Title & Artist
-                        Rectangle {
-                            width: 100%;
-                            height: 54px;
-
-                            HorizontalLayout {
-                                x: 0;
-                                y: is-expanded ? 0px : -10px;
-                                width: 100%;
-                                height: 100%;
-                                spacing: 12px;
-                                opacity: is-expanded ? 1.0 : 0.0;
-
-                                animate y, opacity {
-                                    delay: is-expanded ? 60ms : 0ms;
-                                    duration: is-expanded ? 320ms : 120ms;
-                                    easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
-                                }
-
-                                Rectangle {
-                                    width: 54px;
-                                    height: 54px;
-                                    border-radius: 12px;
-                                    background: #181B24;
-                                    border-width: 1px;
-                                    border-color: #2B3040;
-                                    drop-shadow-blur: 14px;
-                                    drop-shadow-color: #00000088;
-                                    drop-shadow-offset-y: 4px;
-                                    clip: true;
-
-                                    if has-album-art: Image {
-                                        source: album-art;
-                                        width: 100%;
-                                        height: 100%;
-                                        image-fit: cover;
-                                    }
-                                    if !has-album-art: Image {
-                                        x: (parent.width - self.width) / 2;
-                                        y: (parent.height - self.height) / 2;
-                                        source: @image-url("../assets/icons/music.svg");
-                                        width: 22px;
-                                        height: 22px;
-                                        colorize: #717687;
-                                        image-fit: contain;
-                                    }
-                                }
-
-                                VerticalLayout {
-                                    horizontal-stretch: 1;
-                                    spacing: 3px;
-                                    alignment: center;
-
-                                    Text {
-                                        text: track-title;
-                                        color: #FFFFFF;
-                                        font-size: 14.5px;
-                                        font-weight: 700;
-                                        overflow: elide;
-                                    }
-
-                                    Text {
-                                        text: artist-name + (album-name != "" ? " • " + album-name : "");
-                                        color: #A1A1AA;
-                                        font-size: 12px;
-                                        font-weight: 500;
-                                        overflow: elide;
-                                    }
-                                }
-                            }
-                        }
-
-                        // Wave 2: Full Width Progress Bar + Timestamps
-                        Rectangle {
-                            width: 100%;
-                            height: 16px;
-
-                            HorizontalLayout {
-                                x: 0;
-                                y: is-expanded ? 0px : -12px;
-                                width: 100%;
-                                height: 100%;
-                                spacing: 8px;
-                                opacity: is-expanded ? 1.0 : 0.0;
-
-                                animate y, opacity {
-                                    delay: is-expanded ? 110ms : 0ms;
-                                    duration: is-expanded ? 340ms : 120ms;
-                                    easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
-                                }
-
-                                Text {
-                                    text: elapsed-time;
-                                    color: #8E8E93;
-                                    font-size: 10px;
-                                    font-weight: 600;
-                                    vertical-alignment: center;
-                                }
-
-                                // Progress Bar Track (Explicit width stretch)
-                                Rectangle {
-                                    horizontal-stretch: 1;
-                                    height: seek-touch.has-hover ? 6px : 4px;
-                                    y: (parent.height - self.height) / 2;
-                                    border-radius: self.height / 2;
-                                    background: #FFFFFF26;
-
-                                    animate height {
-                                        duration: 140ms;
-                                        easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
-                                    }
-
-                                    Rectangle {
-                                        x: 0;
-                                        y: 0;
-                                        width: parent.width * Math.clamp(progress, 0.0, 1.0);
-                                        height: parent.height;
-                                        border-radius: self.height / 2;
-                                        background: #FFFFFF;
-                                    }
-
-                                    seek-touch := TouchArea {
-                                        mouse-cursor: pointer;
-                                        clicked => { root.seek(self.mouse-x / self.width); }
-                                    }
-                                }
-
-                                Text {
-                                    text: remaining-time;
-                                    color: #8E8E93;
-                                    font-size: 10px;
-                                    font-weight: 600;
-                                    vertical-alignment: center;
-                                }
-                            }
-                        }
-
-                        // Wave 3: Playback Controls
-                        Rectangle {
-                            width: 100%;
-                            height: 42px;
-
-                            HorizontalLayout {
-                                x: 0;
-                                y: is-expanded ? 0px : -14px;
-                                width: 100%;
-                                height: 100%;
-                                alignment: center;
-                                spacing: 20px;
-                                opacity: is-expanded ? 1.0 : 0.0;
-
-                                animate y, opacity {
-                                    delay: is-expanded ? 150ms : 0ms;
-                                    duration: is-expanded ? 360ms : 120ms;
-                                    easing: cubic-bezier(0.34, 1.35, 0.64, 1.0);
-                                }
-
-                                prev-btn := IconButton {
-                                    y: (parent.height - self.height) / 2;
-                                    button-size: 32px;
-                                    icon-size: 17px;
-                                    icon-source: @image-url("../assets/icons/skip-back.svg");
-                                    icon-color: #FFFFFF;
-                                    radius: 16px;
-                                    clicked => { root.skip-previous(); }
-                                }
-
-                                play-btn := PlayPauseButton {
-                                    y: (parent.height - self.height) / 2;
-                                    is-playing: is-playing;
-                                    button-size: 40px;
-                                    clicked => { root.toggle-playback(); }
-                                }
-
-                                next-btn := IconButton {
-                                    y: (parent.height - self.height) / 2;
-                                    button-size: 32px;
-                                    icon-size: 17px;
-                                    icon-source: @image-url("../assets/icons/skip-forward.svg");
-                                    icon-color: #FFFFFF;
-                                    radius: 16px;
-                                    clicked => { root.skip-next(); }
-                                }
-                            }
-                        }
+                    player-comp := PlayerColumn {
+                        is-expanded: root.is-expanded;
+                        is-playing: root.is-playing;
+                        track-title: root.track-title;
+                        artist-name: root.artist-name;
+                        album-name: root.album-name;
+                        elapsed-time: root.elapsed-time;
+                        remaining-time: root.remaining-time;
+                        progress: root.progress;
+                        album-art: root.album-art;
+                        has-album-art: root.has-album-art;
+                        ambient-color: root.ambient-color;
+                        toggle-playback => { root.toggle-playback(); }
+                        skip-next => { root.skip-next(); }
+                        skip-previous => { root.skip-previous(); }
+                        seek(val) => { root.seek(val); }
                     }
 
-                    // ======================================
-                    // COLUMN 2 (RIGHT): APPLE MUSIC SYNCED LYRICS
-                    // ======================================
-                    lyrics-column := Rectangle {
-                        horizontal-stretch: 1;
-                        height: 100%;
-                        clip: true;
-                        opacity: (is-expanded && lyrics-enabled) ? 1.0 : 0.0;
-                        visible: self.opacity > 0.01;
-
-                        animate opacity {
-                            delay: is-expanded ? 130ms : 0ms;
-                            duration: is-expanded ? 340ms : 120ms;
-                            easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
-                        }
-
-                        VerticalLayout {
-                            x: is-expanded ? 0px : 14px;
-                            y: 0px;
-                            width: parent.width;
-                            height: parent.height;
-                            alignment: center;
-                            spacing: 8px;
-                            padding-right: 44px; // Ruang aman untuk tombol Pin & Collapse di kanan atas
-
-                            animate x {
-                                delay: is-expanded ? 130ms : 0ms;
-                                duration: 380ms;
-                                easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
-                            }
-
-                            // Previous Lyric Line
-                            prev-line-box := Rectangle {
-                                width: 100%;
-                                height: 18px;
-
-                                prev-touch := TouchArea {
-                                    mouse-cursor: pointer;
-                                    clicked => { root.seek-to-lyric(-1); }
-                                }
-
-                                Text {
-                                    x: prev-touch.has-hover ? 4px : 0px;
-                                    width: parent.width - 4px;
-                                    text: lyric-prev;
-                                    color: prev-touch.has-hover ? #FFFFFFAA : #FFFFFF45;
-                                    font-size: 12px;
-                                    font-weight: 500;
-                                    horizontal-alignment: left;
-                                    vertical-alignment: center;
-                                    overflow: elide;
-                                    animate x, color {
-                                        duration: 180ms;
-                                        easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
-                                    }
-                                }
-                            }
-
-                            // Active Lyric Line (Kinetic Karaoke Sweep + Spring Lift)
-                            // Active Lyric Line (Single-Line Clean Sweep — Zero Vertical Bleed)
-                            curr-line-box := Rectangle {
-                                width: 100%;
-                                height: 24px;
-
-                                if lyric-transition-active: Rectangle {
-                                    width: parent.width;
-                                    height: parent.height;
-                                    clip: true;
-
-                                    Text {
-                                        x: 0;
-                                        y: lyric-transition-started ? -parent.height : 0px;
-                                        width: parent.width;
-                                        height: parent.height;
-                                        text: lyric-transition-old-line;
-                                        color: #FFFFFF75;
-                                        font-size: 14.5px;
-                                        font-weight: 700;
-                                        horizontal-alignment: left;
-                                        vertical-alignment: center;
-                                        overflow: elide;
-                                        animate y {
-                                            duration: 240ms;
-                                            easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
-                                        }
-                                    }
-
-                                    Text {
-                                        x: 0;
-                                        y: lyric-transition-started ? 0px : parent.height;
-                                        width: parent.width;
-                                        height: parent.height;
-                                        text: lyric-curr;
-                                        color: #FFFFFF;
-                                        font-size: 14.5px;
-                                        font-weight: 700;
-                                        horizontal-alignment: left;
-                                        vertical-alignment: center;
-                                        overflow: elide;
-                                        animate y {
-                                            duration: 240ms;
-                                            easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
-                                        }
-                                    }
-                                }
-
-                                if !lyric-transition-active && has-word-sync: HorizontalLayout {
-                                    width: parent.width;
-                                    height: parent.height;
-                                    spacing: 0px;
-
-                                    Text {
-                                        text: lyric-word-before;
-                                        color: #FFFFFFCC;
-                                        font-size: 14.5px;
-                                        font-weight: 700;
-                                        vertical-alignment: center;
-                                        overflow: elide;
-                                    }
-
-                                    Text {
-                                        text: lyric-word-current;
-                                        color: lyric-word-current != "" ? #FFFFFF : #FFFFFF45;
-                                        font-size: 14.5px;
-                                        font-weight: 700;
-                                        vertical-alignment: center;
-                                        overflow: elide;
-                                        animate color {
-                                            duration: 100ms;
-                                            easing: linear;
-                                        }
-                                    }
-
-                                    Text {
-                                        text: lyric-word-after;
-                                        color: #FFFFFF45;
-                                        font-size: 14.5px;
-                                        font-weight: 700;
-                                        vertical-alignment: center;
-                                        overflow: elide;
-                                    }
-                                }
-
-                                if !lyric-transition-active && !has-word-sync: Text {
-                                    x: 0;
-                                    y: is-playing ? -1px : 0px;
-                                    width: parent.width;
-                                    height: parent.height;
-                                    text: lyric-curr != "" ? lyric-curr : (is-playing ? track-title : "No Synced Lyrics");
-                                    color: #FFFFFF;
-                                    font-size: 14.5px;
-                                    font-weight: 700;
-                                    horizontal-alignment: left;
-                                    vertical-alignment: center;
-                                    overflow: elide;
-                                    animate y {
-                                        duration: 220ms;
-                                        easing: cubic-bezier(0.34, 1.56, 0.64, 1.0);
-                                    }
-                                }
-                            }
-
-                            // Next Lyric Line
-                            next-line-box := Rectangle {
-                                width: 100%;
-                                height: 18px;
-
-                                next-touch := TouchArea {
-                                    mouse-cursor: pointer;
-                                    clicked => { root.seek-to-lyric(1); }
-                                }
-
-                                Text {
-                                    x: next-touch.has-hover ? 4px : 0px;
-                                    width: parent.width - 4px;
-                                    text: lyric-next;
-                                    color: next-touch.has-hover ? #FFFFFFAA : #FFFFFF45;
-                                    font-size: 12px;
-                                    font-weight: 500;
-                                    horizontal-alignment: left;
-                                    vertical-alignment: center;
-                                    overflow: elide;
-                                    animate x, color {
-                                        duration: 180ms;
-                                        easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
-                                    }
-                                }
-                            }
-                        }
-
-                        // Top & Bottom Fade Masks
-                        Rectangle {
-                            x: 0;
-                            y: 0;
-                            width: 100%;
-                            height: 18px;
-                            background: @linear-gradient(180deg, #09090B 0%, transparent 100%);
-                        }
-
-                        Rectangle {
-                            x: 0;
-                            y: parent.height - 18px;
-                            width: 100%;
-                            height: 18px;
-                            background: @linear-gradient(0deg, #09090B 0%, transparent 100%);
-                        }
+                    lyrics-comp := LyricsColumn {
+                        is-expanded: root.is-expanded;
+                        lyrics-enabled: root.lyrics-enabled;
+                        is-playing: root.is-playing;
+                        track-title: root.track-title;
+                        lyric-lines: root.lyric-lines;
+                        lyric-index: root.lyric-index;
+                        lyric-word-before: root.lyric-word-before;
+                        lyric-word-current: root.lyric-word-current;
+                        lyric-word-after: root.lyric-word-after;
+                        has-word-sync: root.has-word-sync;
+                        ambient-color: root.ambient-color;
+                        seek-to-lyric(dir) => { root.seek-to-lyric(dir); }
                     }
                 }
 
-                // Top-Right Utility Controls (Pin & Collapse)
+                // Top-Right Quick Action Buttons (Lyrics, Pin, Collapse)
                 HorizontalLayout {
                     width: 74px;
                     height: 22px;
@@ -766,57 +293,9 @@ export component MainWindow inherits Window {
             }
         }
 
-        // ============================================================
-        // SEAMLESS TANGENTIAL EAR FLARES (100% Color Match #09090B)
-        // ============================================================
-        // Left Ear Flare
-        Path {
-            x: 1px;
-            y: 0px;
-            width: 14px;
-            height: 14px;
-            viewbox-width: 14;
-            viewbox-height: 14;
-            fill: #09090B;
-            commands: "M 0 0 C 8 0 14 5 14 14 L 14 0 Z";
-        }
-
-        Path {
-            x: 1px;
-            y: 0px;
-            width: 14px;
-            height: 14px;
-            viewbox-width: 14;
-            viewbox-height: 14;
-            stroke: #222530;
-            stroke-width: 1px;
-            fill: transparent;
-            commands: "M 0 0 C 8 0 14 5 14 14";
-        }
-
-        // Right Ear Flare
-        Path {
-            x: current-island-width + 13px;
-            y: 0px;
-            width: 14px;
-            height: 14px;
-            viewbox-width: 14;
-            viewbox-height: 14;
-            fill: #09090B;
-            commands: "M 0 0 L 0 14 C 0 5 6 0 14 0 Z";
-        }
-
-        Path {
-            x: current-island-width + 13px;
-            y: 0px;
-            width: 14px;
-            height: 14px;
-            viewbox-width: 14;
-            viewbox-height: 14;
-            stroke: #222530;
-            stroke-width: 1px;
-            fill: transparent;
-            commands: "M 0 14 C 0 5 6 0 14 0";
+        // Tangential Ear Flares for smooth screen-top continuity
+        EarFlares {
+            island-width: root.current-island-width;
         }
     }
 }

@@ -1,0 +1,220 @@
+// Fidra Island — Expanded Player Column (Album Art, Waveform Progress, Transport)
+
+import { IconButton, PlayPauseButton } from "controls.slint";
+
+export component PlayerColumn inherits VerticalLayout {
+    in property <bool> is-expanded: false;
+    in property <bool> is-playing: false;
+    in property <string> track-title: "";
+    in property <string> artist-name: "";
+    in property <string> album-name: "";
+    in property <string> elapsed-time: "00:00";
+    in property <string> remaining-time: "—";
+    in property <float> progress: 0.0;
+    in property <image> album-art;
+    in property <bool> has-album-art: false;
+    in property <color> ambient-color: #38BDF8;
+
+    callback toggle-playback();
+    callback skip-next();
+    callback skip-previous();
+    callback seek(float);
+
+    out property <bool> has-hover:
+        seek-touch.has-hover
+        || prev-btn.has-hover
+        || play-btn.has-hover
+        || next-btn.has-hover;
+
+    width: 240px;
+    height: 100%;
+    spacing: 12px;
+    alignment: center;
+
+    // Wave 1: Album Art + Track Title & Artist
+    Rectangle {
+        width: 100%;
+        height: 54px;
+
+        HorizontalLayout {
+            x: 0;
+            y: root.is-expanded ? 0px : -10px;
+            width: 100%;
+            height: 100%;
+            spacing: 12px;
+            opacity: root.is-expanded ? 1.0 : 0.0;
+
+            animate y, opacity {
+                delay: root.is-expanded ? 60ms : 0ms;
+                duration: root.is-expanded ? 320ms : 120ms;
+                easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
+            }
+
+            Rectangle {
+                width: 54px;
+                height: 54px;
+                border-radius: 12px;
+                background: #181B24;
+                border-width: 1px;
+                border-color: #2B3040;
+                drop-shadow-blur: 14px;
+                drop-shadow-color: #00000088;
+                drop-shadow-offset-y: 4px;
+                clip: true;
+
+                if root.has-album-art: Image {
+                    source: root.album-art;
+                    width: 100%;
+                    height: 100%;
+                    image-fit: cover;
+                }
+                if !root.has-album-art: Image {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    source: @image-url("../../assets/icons/music.svg");
+                    width: 22px;
+                    height: 22px;
+                    colorize: #717687;
+                    image-fit: contain;
+                }
+            }
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 3px;
+                alignment: center;
+
+                Text {
+                    text: root.track-title;
+                    color: #FFFFFF;
+                    font-size: 14.5px;
+                    font-weight: 700;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: root.artist-name + (root.album-name != "" ? " • " + root.album-name : "");
+                    color: #A1A1AA;
+                    font-size: 12px;
+                    font-weight: 500;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+
+    // Wave 2: Full Width Progress Bar + Timestamps
+    Rectangle {
+        width: 100%;
+        height: 16px;
+
+        HorizontalLayout {
+            x: 0;
+            y: root.is-expanded ? 0px : -12px;
+            width: 100%;
+            height: 100%;
+            spacing: 8px;
+            opacity: root.is-expanded ? 1.0 : 0.0;
+
+            animate y, opacity {
+                delay: root.is-expanded ? 110ms : 0ms;
+                duration: root.is-expanded ? 340ms : 120ms;
+                easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
+            }
+
+            Text {
+                text: root.elapsed-time;
+                color: #8E8E93;
+                font-size: 10px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+
+            // Interactive Progress Bar Track
+            Rectangle {
+                horizontal-stretch: 1;
+                height: seek-touch.has-hover ? 6px : 4px;
+                y: (parent.height - self.height) / 2;
+                border-radius: self.height / 2;
+                background: #FFFFFF26;
+
+                animate height {
+                    duration: 140ms;
+                    easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
+                }
+
+                // Fill Bar colored with accent gradient
+                Rectangle {
+                    x: 0;
+                    y: 0;
+                    width: parent.width * Math.clamp(root.progress, 0.0, 1.0);
+                    height: parent.height;
+                    border-radius: self.height / 2;
+                    background: root.ambient-color;
+                }
+
+                seek-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.seek(self.mouse-x / self.width); }
+                }
+            }
+
+            Text {
+                text: root.remaining-time;
+                color: #8E8E93;
+                font-size: 10px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    // Wave 3: Playback Controls
+    Rectangle {
+        width: 100%;
+        height: 42px;
+
+        HorizontalLayout {
+            x: 0;
+            y: root.is-expanded ? 0px : -14px;
+            width: 100%;
+            height: 100%;
+            alignment: center;
+            spacing: 20px;
+            opacity: root.is-expanded ? 1.0 : 0.0;
+
+            animate y, opacity {
+                delay: root.is-expanded ? 150ms : 0ms;
+                duration: root.is-expanded ? 360ms : 120ms;
+                easing: cubic-bezier(0.34, 1.35, 0.64, 1.0);
+            }
+
+            prev-btn := IconButton {
+                y: (parent.height - self.height) / 2;
+                button-size: 32px;
+                icon-size: 17px;
+                icon-source: @image-url("../../assets/icons/skip-back.svg");
+                icon-color: #FFFFFF;
+                radius: 16px;
+                clicked => { root.skip-previous(); }
+            }
+
+            play-btn := PlayPauseButton {
+                y: (parent.height - self.height) / 2;
+                is-playing: root.is-playing;
+                button-size: 40px;
+                clicked => { root.toggle-playback(); }
+            }
+
+            next-btn := IconButton {
+                y: (parent.height - self.height) / 2;
+                button-size: 32px;
+                icon-size: 17px;
+                icon-source: @image-url("../../assets/icons/skip-forward.svg");
+                icon-color: #FFFFFF;
+                radius: 16px;
+                clicked => { root.skip-next(); }
+            }
+        }
+    }
+}

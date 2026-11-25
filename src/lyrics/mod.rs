@@ -68,6 +68,8 @@ pub struct LyricContext {
     pub word_after: String,
     /// Whether the active line has enhanced word-level timestamps.
     pub has_word_sync: bool,
+    /// Zero-based index of the active line within [`LyricsData::lines`].
+    pub curr_index: usize,
 }
 
 impl LyricsData {
@@ -144,7 +146,13 @@ impl LyricsData {
             word_current,
             word_after,
             has_word_sync,
+            curr_index: curr_idx,
         }
+    }
+
+    /// Returns the plain display text of every line, in order.
+    pub fn line_texts(&self) -> Vec<String> {
+        self.lines.iter().map(|l| l.text.clone()).collect()
     }
 }
 

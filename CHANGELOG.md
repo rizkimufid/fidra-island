@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Dynamic Cover Art Ambient Glow:** Fast downsampled (24x24) dominant color extractor (`src/media/color.rs`) scoring vibrant saturation to pass dynamic `ambient-color` into Slint's `@radial-gradient` and progress bar accent.
+- **Specular Hardware Top Rim:** 1px glass specular highlight across the island top container for physical bezel realism.
+- **Kinetic Waterfall Lyric Animation:** Smooth continuous vertical waterfall stream in `ui/components/lyrics_column.slint`, interpolating line positions and typography scale (12px to 15.5px) with spring deceleration curves (`cubic-bezier(0.16, 1.0, 0.3, 1.0)`).
+- **Strict < 500 LOC Modular Architecture:** Decomposed monolithic UI and application logic to adhere strictly to the rule:
+  - `src/app/{mod.rs, callbacks.rs}`
+  - `src/platform/windows/{mod.rs, hit_test.rs, tray.rs}`
+  - `src/media/{mod.rs, color.rs, gsmtc.rs, stub.rs}`
+  - `src/lyrics/{mod.rs, parser.rs, cache.rs, client.rs}`
+  - `ui/components/{compact_layer.slint, player_column.slint, lyrics_column.slint, ear_flares.slint}`
+- **Companion Widget Roadmap:** Expanded `docs/roadmap.md` with detailed architecture and milestones for Hydration / Water Reminder, Prayer Times (Jadwal Sholat), and Daily Task Companion.
 - Persistent lyrics disk cache (`%LOCALAPPDATA%\FidraIsland\cache\lyrics\`) with positive (14-day) and negative (2-day) TTL for instant offline playback.
 - Inno Setup installer script (`packaging/installer.iss`) for single-click Windows per-user installation with desktop shortcut and uninstaller.
 - Automated GitHub Actions release pipeline (`.github/workflows/release.yml`) building portable ZIP, installer setup, and `SHA256SUMS.txt` on version tags.

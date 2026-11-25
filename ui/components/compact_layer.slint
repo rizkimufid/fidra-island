@@ -1,0 +1,161 @@
+// Fidra Island — Compact Mode Layer (Status Pill & Mini Lyrics/EQ Ticker)
+
+import { BatteryRing } from "battery_ring.slint";
+import { EqualizerMini } from "equalizer.slint";
+
+export component CompactLayer inherits Rectangle {
+    in property <bool> is-expanded: false;
+    in property <bool> show-lyrics: false;
+    in property <string> track-title: "";
+    in property <string> current-lyric-line: "";
+    in property <string> current-time-str: "00:00";
+    in property <float> battery-level: 1.0;
+    in property <bool> is-charging: false;
+    in property <string> battery-arc-path: "M 8 2 A 6 6 0 1 1 7.99 2 Z";
+    in property <bool> is-playing: false;
+    in property <float> eq-bar1: 3.0;
+    in property <float> eq-bar2: 3.0;
+    in property <float> eq-bar3: 3.0;
+    in property <float> eq-bar4: 3.0;
+
+    callback toggle-expanded();
+
+    out property <bool> has-hover: touch.has-hover;
+
+    touch := TouchArea {
+        enabled: !root.is-expanded;
+        mouse-cursor: pointer;
+        clicked => { root.toggle-expanded(); }
+    }
+
+    // State 1: System Status Pill (Clock + Title + Battery)
+    if !root.show-lyrics: HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 8px;
+        alignment: center;
+
+        Rectangle {
+            height: 22px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 11px;
+            background: #14161F;
+            border-width: 1px;
+            border-color: #242938;
+
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 5px;
+                alignment: center;
+
+                Rectangle {
+                    width: 5px;
+                    height: 5px;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 2.5px;
+                    background: #38BDF8;
+                }
+
+                Text {
+                    text: root.current-time-str;
+                    color: #E2E8F0;
+                    font-size: 11px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        Text {
+            text: root.track-title;
+            color: #F8FAFC;
+            font-size: 11.5px;
+            font-weight: 600;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+
+        Rectangle {
+            height: 22px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 11px;
+            background: #14161F;
+            border-width: 1px;
+            border-color: #242938;
+
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 5px;
+                alignment: center;
+
+                Text {
+                    text: Math.round(Math.clamp(root.battery-level, 0.0, 1.0) * 100) + "%";
+                    color: root.is-charging ? #4ADE80 : (root.battery-level < 0.2 ? #F87171 : #D6DCEE);
+                    font-size: 11px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+
+                BatteryRing {
+                    y: (parent.height - self.height) / 2;
+                    progress: root.battery-level;
+                    is-charging: root.is-charging;
+                    arc-path: root.battery-arc-path;
+                }
+            }
+        }
+    }
+
+    // State 2: Compact Lyrics & EQ Pill
+    if root.show-lyrics: HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 8px;
+        alignment: center;
+
+        Rectangle {
+            width: 20px;
+            height: 20px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 6px;
+            background: #14261B;
+            border-width: 1px;
+            border-color: #224730;
+
+            Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 11px;
+                height: 11px;
+                source: @image-url("../../assets/icons/music.svg");
+                colorize: #1ED760;
+                image-fit: contain;
+            }
+        }
+
+        Text {
+            text: root.current-lyric-line != "" ? root.current-lyric-line : root.track-title;
+            color: #F4F4F6;
+            font-size: 12px;
+            font-weight: 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+
+        EqualizerMini {
+            y: (parent.height - self.height) / 2;
+            is-playing: root.is-playing;
+            bar-color: #1ED760;
+            bar1: root.eq-bar1;
+            bar2: root.eq-bar2;
+            bar3: root.eq-bar3;
+            bar4: root.eq-bar4;
+        }
+    }
+}

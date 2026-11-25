@@ -101,12 +101,15 @@ pub fn fetch_lyrics_with_cache(
         return None;
     }
 
-    if let Some(cached_result) = cache::load_from_cache(dir, &clean_title, &clean_artist, now_secs) {
+    if let Some(cached_result) = cache::load_from_cache(dir, &clean_title, &clean_artist, now_secs)
+    {
         return cached_result;
     }
 
     let agent = http_agent();
-    let fetched = if let Some(lrc) = try_lrclib_get(agent, &clean_title, &clean_artist, duration_sec) {
+    let fetched = if let Some(lrc) =
+        try_lrclib_get(agent, &clean_title, &clean_artist, duration_sec)
+    {
         let lines = parse_lrc(&lrc);
         if !lines.is_empty() {
             Some(LyricsData { lines })
@@ -124,13 +127,7 @@ pub fn fetch_lyrics_with_cache(
         None
     };
 
-    cache::save_to_cache(
-        dir,
-        &clean_title,
-        &clean_artist,
-        fetched.as_ref(),
-        now_secs,
-    );
+    cache::save_to_cache(dir, &clean_title, &clean_artist, fetched.as_ref(), now_secs);
 
     fetched
 }

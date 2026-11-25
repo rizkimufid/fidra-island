@@ -127,12 +127,7 @@ mod tests {
         let loaded_missing = load_from_cache(&temp_dir, missing_title, artist, now + 100);
         assert_eq!(loaded_missing, Some(None));
 
-        let expired = load_from_cache(
-            &temp_dir,
-            title,
-            artist,
-            now + POSITIVE_CACHE_TTL_SECS + 5,
-        );
+        let expired = load_from_cache(&temp_dir, title, artist, now + POSITIVE_CACHE_TTL_SECS + 5);
         assert_eq!(expired, None);
 
         let _ = std::fs::remove_dir_all(&temp_dir);

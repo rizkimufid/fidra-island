@@ -140,8 +140,7 @@ impl MediaController {
                             ((ft.dwHighDateTime as u64) << 32) | (ft.dwLowDateTime as u64);
                         let updated_ticks = updated_ticks as u64;
                         if now_ticks > updated_ticks {
-                            let age_seconds =
-                                ((now_ticks - updated_ticks) as f32) / 10_000_000.0;
+                            let age_seconds = ((now_ticks - updated_ticks) as f32) / 10_000_000.0;
                             if age_seconds < 86400.0 {
                                 reported_pos += age_seconds;
                             }
@@ -200,7 +199,8 @@ impl MediaController {
                     match loaded {
                         Some(bytes) => {
                             self.has_sent_thumbnail = true;
-                            let color = extract_dominant_color(&bytes).unwrap_or(DEFAULT_AMBIENT_COLOR);
+                            let color =
+                                extract_dominant_color(&bytes).unwrap_or(DEFAULT_AMBIENT_COLOR);
                             self.last_ambient_color = color;
                             snapshot.ambient_color = color;
                             snapshot.thumbnail = ThumbnailUpdate::Updated(bytes);
@@ -217,8 +217,7 @@ impl MediaController {
         }
 
         let song_key = format!("{} - {}", snapshot.title, snapshot.artist);
-        let track_changed =
-            snapshot.title != "No Media Playing" && song_key != self.last_song_key;
+        let track_changed = snapshot.title != "No Media Playing" && song_key != self.last_song_key;
         if track_changed {
             self.last_song_key = song_key;
             self.position_anchor = None;
@@ -324,8 +323,7 @@ impl MediaController {
             if let Ok(timeline) = session.GetTimelineProperties() {
                 if let Ok(end) = timeline.EndTime() {
                     let target = (end.Duration as f64 / 10_000_000.0
-                        * fraction.clamp(0.0, 1.0) as f64)
-                        as f32;
+                        * fraction.clamp(0.0, 1.0) as f64) as f32;
                     self.set_seek_anchor(target);
                     let target_ticks = (target as f64 * 10_000_000.0) as i64;
                     let _ = session.TryChangePlaybackPositionAsync(target_ticks);

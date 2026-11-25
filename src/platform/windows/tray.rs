@@ -6,7 +6,9 @@ use std::sync::{mpsc, Mutex, OnceLock};
 use windows_sys::Win32::{
     Foundation::{HWND, POINT},
     UI::{
-        Shell::{Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW},
+        Shell::{
+            Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW,
+        },
         WindowsAndMessaging::{
             AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, LoadIconW, PostMessageW,
             SetForegroundWindow, TrackPopupMenu, IDI_APPLICATION, MF_CHECKED, MF_SEPARATOR,
@@ -86,7 +88,12 @@ pub unsafe fn show_tray_menu(hwnd: HWND) {
     AppendMenuW(menu, MF_STRING, IDM_TOGGLE_VISIBILITY, vis_label.as_ptr());
     AppendMenuW(
         menu,
-        MF_STRING | if lyrics_enabled { MF_CHECKED } else { MF_UNCHECKED },
+        MF_STRING
+            | if lyrics_enabled {
+                MF_CHECKED
+            } else {
+                MF_UNCHECKED
+            },
         IDM_TOGGLE_LYRICS,
         lyrics_label.as_ptr(),
     );
