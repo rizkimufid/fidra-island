@@ -1,0 +1,42 @@
+// Circular 16x16 battery ring indicator with dynamic charging icon.
+
+export component BatteryRing inherits Rectangle {
+    in property <string> arc-path;
+    in property <bool> is-charging: false;
+    in property <float> progress: 0.85;
+    width: 16px;
+    height: 16px;
+    background: transparent;
+
+    Path {
+        width: 16px;
+        height: 16px;
+        viewbox-width: 16;
+        viewbox-height: 16;
+        stroke: #252A3C;
+        stroke-width: 2px;
+        fill: transparent;
+        commands: "M 8 2 A 6 6 0 1 1 7.99 2 Z";
+    }
+
+    Path {
+        width: 16px;
+        height: 16px;
+        viewbox-width: 16;
+        viewbox-height: 16;
+        stroke: is-charging ? #22C55E : (progress < 0.2 ? #EF4444 : (progress < 0.45 ? #F59E0B : #38BDF8));
+        stroke-width: 2px;
+        fill: transparent;
+        commands: arc-path;
+    }
+
+    if is-charging: Image {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 8px;
+        height: 8px;
+        source: @image-url("../../assets/icons/zap.svg");
+        colorize: #22C55E;
+        image-fit: contain;
+    }
+}

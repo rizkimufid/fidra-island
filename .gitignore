@@ -1,7 +1,6 @@
-target/
-Cargo.lock
+/target/
 .idea/
 .vscode/
 *.user
 *.suo
-docs
+*.log

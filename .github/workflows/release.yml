@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-release:
+    name: Build & Package Windows Release
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Prepare portable package
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Path dist -Force
+          $ZipDir = "dist\fidra-island-portable-x64"
+          New-Item -ItemType Directory -Path $ZipDir -Force
+          Copy-Item target\release\fidra-island.exe -Destination $ZipDir
+          Copy-Item README.md -Destination $ZipDir
+          Copy-Item CHANGELOG.md -Destination $ZipDir
+          Compress-Archive -Path "$ZipDir\*" -DestinationPath "dist\fidra-island-portable-windows-x64.zip" -Force
+
+      - name: Compile Inno Setup installer
+        shell: powershell
+        run: |
+          $Iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (Test-Path $Iscc) {
+            & $Iscc packaging\installer.iss
+          } else {
+            Write-Host "ISCC not in default path; checking PATH..."
+            iscc packaging\installer.iss
+          }
+
+      - name: Compute SHA-256 checksums
+        shell: powershell
+        run: |
+          $Files = Get-ChildItem -Path dist -Include *.zip, *.exe -Recurse
+          $Hashes = foreach ($file in $Files) {
+            $h = Get-FileHash -Path $file.FullName -Algorithm SHA256
+            "$($h.Hash.ToLower())  $($file.Name)"
+          }
+          $Hashes | Out-File -FilePath dist\SHA256SUMS.txt -Encoding ascii
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            dist/*.zip
+            dist/*.exe
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
+          draft: false
+          prerelease: false

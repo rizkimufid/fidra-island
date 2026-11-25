@@ -1,0 +1,80 @@
+// Tactile transport and utility icon buttons.
+
+export component IconButton inherits Rectangle {
+    in property <image> icon-source;
+    in property <length> button-size: 24px;
+    in property <length> icon-size: 13px;
+    in property <color> icon-color: #D6DAE4;
+    in property <color> bg-color: transparent;
+    in property <color> hover-bg: #FFFFFF18;
+    in property <color> border-col: transparent;
+    in property <length> radius: 6px;
+    out property <bool> pressed <=> touch.pressed;
+    out property <bool> has-hover <=> touch.has-hover;
+    callback clicked();
+
+    width: button-size;
+    height: button-size;
+    border-radius: radius;
+    background: touch.pressed ? #FFFFFF28 : (touch.has-hover ? hover-bg : bg-color);
+    border-width: 1px;
+    border-color: border-col;
+
+    animate background {
+        duration: 140ms;
+        easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
+    }
+
+    Image {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: icon-size;
+        height: icon-size;
+        source: icon-source;
+        colorize: icon-color;
+        image-fit: contain;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component PlayPauseButton inherits Rectangle {
+    in property <bool> is-playing: false;
+    in property <length> button-size: 40px;
+    out property <bool> pressed <=> touch.pressed;
+    out property <bool> has-hover <=> touch.has-hover;
+    callback clicked();
+
+    width: touch.pressed ? button-size - 3px : button-size;
+    height: touch.pressed ? button-size - 3px : button-size;
+    border-radius: self.width / 2;
+    background: touch.has-hover ? #F4F4F6 : #FFFFFF;
+    drop-shadow-blur: self.has-hover ? 16px : 10px;
+    drop-shadow-color: #FFFFFF35;
+    drop-shadow-offset-y: 2px;
+
+    animate width, height, background, drop-shadow-blur {
+        duration: 180ms;
+        easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
+    }
+
+    Image {
+        x: (parent.width - self.width) / 2 + (is-playing ? 0px : 1.5px);
+        y: (parent.height - self.height) / 2;
+        width: 17px;
+        height: 17px;
+        source: is-playing
+            ? @image-url("../../assets/icons/pause.svg")
+            : @image-url("../../assets/icons/play.svg");
+        colorize: #09090B;
+        image-fit: contain;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}

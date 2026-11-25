@@ -1,0 +1,32 @@
+// 4-bar live audio equalizer widget (rests at 3px when paused).
+
+export component EqualizerMini inherits Rectangle {
+    in property <bool> is-playing: false;
+    in property <color> bar-color: #1ED760;
+    in property <float> bar1: 3.0;
+    in property <float> bar2: 3.0;
+    in property <float> bar3: 3.0;
+    in property <float> bar4: 3.0;
+    width: 14px;
+    height: 12px;
+    background: transparent;
+
+    HorizontalLayout {
+        spacing: 2px;
+        alignment: center;
+
+        for bar-val in [bar1, bar2, bar3, bar4]: VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 2px;
+                height: (is-playing ? bar-val : 3.0) * 1px;
+                border-radius: 1px;
+                background: bar-color;
+                animate height {
+                    duration: 90ms;
+                    easing: ease-in-out;
+                }
+            }
+        }
+    }
+}
