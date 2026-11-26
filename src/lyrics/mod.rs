@@ -9,6 +9,7 @@
 pub mod cache;
 pub mod client;
 pub mod parser;
+pub mod romanize;
 
 #[allow(unused_imports)]
 pub use cache::{cache_dir, DiskCacheEntry, NEGATIVE_CACHE_TTL_SECS, POSITIVE_CACHE_TTL_SECS};
@@ -16,6 +17,8 @@ pub use cache::{cache_dir, DiskCacheEntry, NEGATIVE_CACHE_TTL_SECS, POSITIVE_CAC
 pub use client::{fetch_lyrics_with_cache, sanitize_metadata};
 #[allow(unused_imports)]
 pub use parser::parse_lrc;
+#[allow(unused_imports)]
+pub use romanize::romanize_line;
 use serde::{Deserialize, Serialize};
 
 /// A single timestamped lyric line, optionally enriched with word-level timestamps.
@@ -156,6 +159,22 @@ impl LyricsData {
     }
 }
 
+/// Returns `true` when `text` contains Japanese script (hiragana, katakana, or CJK ideographs).
+///
+/// Used by the UI to pick the Japanese typeface for a lyric line.
+pub fn is_japanese(text: &str) -> bool {
+    text.chars().any(|c| {
+        matches!(c as u32,
+            0x3040..=0x309F   // Hiragana
+            | 0x30A0..=0x30FF // Katakana
+            | 0x31F0..=0x31FF // Katakana phonetic extensions
+            | 0xFF66..=0xFF9F // Halfwidth katakana
+            | 0x3400..=0x4DBF // CJK extension A
+            | 0x4E00..=0x9FFF // CJK unified ideographs
+        )
+    })
+}
+
 /// Convenience entrypoint fetching lyrics using default cache directory and wall-clock timestamp.
 pub fn fetch_lyrics(title: &str, artist: &str, duration_sec: f64) -> Option<LyricsData> {
     let now = std::time::SystemTime::now()
@@ -168,6 +187,16 @@ pub fn fetch_lyrics(title: &str, artist: &str, duration_sec: f64) -> Option<Lyri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detects_japanese_script_only() {
+        assert!(is_japanese("こんにちは"));
+        assert!(is_japanese("カタカナ"));
+        assert!(is_japanese("夜空 mix"));
+        assert!(!is_japanese("Plain latin lyric"));
+        assert!(!is_japanese("Suatu saat nanti"));
+        assert!(!is_japanese(""));
+    }
 
     #[test]
     fn lyrics_context_resolves_prev_curr_next_and_words() {

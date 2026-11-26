@@ -1,0 +1,17 @@
+// Fidra Island — shared UI data types.
+
+/// One lyric line plus language metadata and optional romanized translation.
+export struct LyricRow {
+    text: string,
+    jp: bool,
+    roman: string,
+    has_roman: bool,
+}
+
+/// One prayer schedule row for the Jadwal Sholat expanded card.
+export struct PrayerRow {
+    name: string,
+    time_str: string,
+    is_next: bool,
+}
+

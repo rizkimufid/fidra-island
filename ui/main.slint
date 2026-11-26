@@ -5,13 +5,25 @@ import { EarFlares } from "components/ear_flares.slint";
 import { CompactLayer } from "components/compact_layer.slint";
 import { PlayerColumn } from "components/player_column.slint";
 import { LyricsColumn } from "components/lyrics_column.slint";
+import { PrayerCard } from "components/prayer_card.slint";
+import { PageSwitcher } from "components/page_switcher.slint";
+import { TopToolbar } from "components/top_toolbar.slint";
+import { LyricRow, PrayerRow } from "components/types.slint";
+
+// Bundled typefaces (SIL OFL 1.1, see assets/fonts/OFL-*.txt).
+import "../assets/fonts/PlusJakartaSans-Regular.ttf";
+import "../assets/fonts/PlusJakartaSans-Bold.ttf";
+import "../assets/fonts/LINESeedJP-Regular.ttf";
+import "../assets/fonts/LINESeedJP-Bold.ttf";
+
+export { LyricRow, PrayerRow }
 
 export component MainWindow inherits Window {
     title: "Fidra Island";
     no-frame: true;
     always-on-top: true;
     background: transparent;
-    default-font-family: "Segoe UI";
+    default-font-family: "Plus Jakarta Sans";
 
     width: 680px;
     height: 220px;
@@ -27,9 +39,10 @@ export component MainWindow inherits Window {
     in-out property <bool> is-expanded: false;
     in-out property <bool> is-pinned: false;
     in-out property <bool> lyrics-enabled: false;
+    in-out property <bool> romanize-enabled: true;
     in-out property <bool> show-lyrics: false;
     in-out property <string> current-lyric-line: "";
-    in-out property <[string]> lyric-lines;
+    in-out property <[LyricRow]> lyric-lines;
     in-out property <int> lyric-index: 0;
     in-out property <string> lyric-word-before: "";
     in-out property <string> lyric-word-current: "";
@@ -47,6 +60,12 @@ export component MainWindow inherits Window {
     in property <float> eq-bar3: 3.0;
     in property <float> eq-bar4: 3.0;
     in-out property <length> lyric-width: 310px;
+    in-out property <bool> prayer-enabled: true;
+    in-out property <string> prayer-name: "";
+    in-out property <string> prayer-countdown: "";
+    in-out property <bool> prayer-alert: false;
+    in property <[PrayerRow]> prayer-schedule: [];
+    in-out property <int> expanded-page: 0;
 
     // Dynamic adaptive ambient color extracted from current album art
     in property <color> ambient-color: #38BDF8;
@@ -57,25 +76,28 @@ export component MainWindow inherits Window {
     callback toggle-expanded();
     callback toggle-pinned();
     callback toggle-lyrics();
+    callback toggle-romanize();
+    callback page-changed(int);
     callback seek(float);
     callback seek-to-lyric(int);
     callback hover-changed(bool);
 
     out property <bool> is-mouse-inside:
         island-touch.has-hover
+        || expanded-touch.has-hover
         || compact-comp.has-hover
         || player-comp.has-hover
         || lyrics-comp.has-hover
-        || pin-btn.has-hover
-        || lyrics-btn.has-hover
-        || collapse-btn.has-hover;
+        || prayer-comp.has-hover
+        || top-toolbar.has-hover
+        || page-switcher.has-hover;
 
     changed is-mouse-inside => {
         root.hover-changed(self.is-mouse-inside);
     }
 
     in-out property <length> target-island-width: is-expanded
-        ? (lyrics-enabled ? 610px : 320px)
+        ? ((expanded-page == 1 || lyrics-enabled) ? 610px : 320px)
         : (show-lyrics
         ? Math.clamp(lyric-width, 280px, 420px)
         : (compact-comp.has-hover ? 310px : 290px));
@@ -93,7 +115,7 @@ export component MainWindow inherits Window {
         x: (parent.width - self.width) / 2;
         y: 0px;
         width: current-island-width + 28px;
-        height: is-expanded ? 185px : 48px;
+        height: is-expanded ? 196px : 48px;
         background: transparent;
 
         // Main Obsidian Container (Solid #09090B top matching tangential ear flares)
@@ -101,7 +123,7 @@ export component MainWindow inherits Window {
             x: 14px;
             y: -12px;
             width: current-island-width;
-            height: (is-expanded ? 174px : 38px) + 12px;
+            height: (is-expanded ? 184px : 38px) + 12px;
             border-bottom-left-radius: is-expanded ? 26px : 19px;
             border-bottom-right-radius: is-expanded ? 26px : 19px;
             background: @linear-gradient(180deg, #09090B 0%, #0E1015 100%);
@@ -154,6 +176,19 @@ export component MainWindow inherits Window {
             island-touch := TouchArea {
                 width: 100%;
                 height: 100%;
+                scroll-event(event) => {
+                    if root.is-expanded {
+                        if event.delta-y < 0px || event.delta-x < 0px {
+                            root.expanded-page = 1;
+                            root.page-changed(1);
+                        } else if event.delta-y > 0px || event.delta-x > 0px {
+                            root.expanded-page = 0;
+                            root.page-changed(0);
+                        }
+                        return accept;
+                    }
+                    reject
+                }
             }
 
             // ==========================================
@@ -187,18 +222,23 @@ export component MainWindow inherits Window {
                     eq-bar2: root.eq-bar2;
                     eq-bar3: root.eq-bar3;
                     eq-bar4: root.eq-bar4;
+                    prayer-enabled: root.prayer-enabled;
+                    prayer-name: root.prayer-name;
+                    prayer-countdown: root.prayer-countdown;
+                    prayer-alert: root.prayer-alert;
                     toggle-expanded => { root.toggle-expanded(); }
                 }
             }
 
             // ==========================================
-            // EXPANDED LAYER (2-Column Split: Player + Lyrics)
+            // ==========================================
+            // EXPANDED LAYER (Carousel: Page 0 = Music/Lyrics, Page 1 = Jadwal Sholat)
             // ==========================================
             expanded-layer := Rectangle {
                 x: 0;
                 y: 12px;
                 width: parent.width;
-                height: 174px;
+                height: 184px;
                 opacity: is-expanded ? 1.0 : 0.0;
                 visible: self.opacity > 0.01;
 
@@ -207,87 +247,181 @@ export component MainWindow inherits Window {
                     easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
                 }
 
-                HorizontalLayout {
-                    x: lyrics-enabled ? 20px : (parent.width - 240px) / 2;
-                    y: 16px;
-                    width: lyrics-enabled ? parent.width - 40px : 240px;
-                    height: parent.height - 32px;
-                    spacing: 24px;
-
-                    player-comp := PlayerColumn {
-                        is-expanded: root.is-expanded;
-                        is-playing: root.is-playing;
-                        track-title: root.track-title;
-                        artist-name: root.artist-name;
-                        album-name: root.album-name;
-                        elapsed-time: root.elapsed-time;
-                        remaining-time: root.remaining-time;
-                        progress: root.progress;
-                        album-art: root.album-art;
-                        has-album-art: root.has-album-art;
-                        ambient-color: root.ambient-color;
-                        toggle-playback => { root.toggle-playback(); }
-                        skip-next => { root.skip-next(); }
-                        skip-previous => { root.skip-previous(); }
-                        seek(val) => { root.seek(val); }
-                    }
-
-                    lyrics-comp := LyricsColumn {
-                        is-expanded: root.is-expanded;
-                        lyrics-enabled: root.lyrics-enabled;
-                        is-playing: root.is-playing;
-                        track-title: root.track-title;
-                        lyric-lines: root.lyric-lines;
-                        lyric-index: root.lyric-index;
-                        lyric-word-before: root.lyric-word-before;
-                        lyric-word-current: root.lyric-word-current;
-                        lyric-word-after: root.lyric-word-after;
-                        has-word-sync: root.has-word-sync;
-                        ambient-color: root.ambient-color;
-                        seek-to-lyric(dir) => { root.seek-to-lyric(dir); }
+                // Base touch area covering full expanded surface (handles background hover & scroll)
+                expanded-touch := TouchArea {
+                    width: 100%;
+                    height: 100%;
+                    scroll-event(event) => {
+                        if event.delta-y < 0px || event.delta-x < 0px {
+                            root.expanded-page = 1;
+                            root.page-changed(1);
+                        } else if event.delta-y > 0px || event.delta-x > 0px {
+                            root.expanded-page = 0;
+                            root.page-changed(0);
+                        }
+                        accept
                     }
                 }
 
-                // Top-Right Quick Action Buttons (Lyrics, Pin, Collapse)
+                // Unified Top Bar: Left = Island Branding, Right = Action Toolbar
                 HorizontalLayout {
-                    width: 74px;
-                    height: 22px;
-                    x: parent.width - 88px;
-                    y: 12px;
-                    spacing: 4px;
+                    x: 16px;
+                    y: 7px;
+                    width: parent.width - 32px;
+                    height: 24px;
+                    alignment: space-between;
 
-                    lyrics-btn := IconButton {
-                        button-size: 22px;
-                        icon-size: 13px;
-                        icon-source: @image-url("../assets/icons/lyrics.svg");
-                        icon-color: lyrics-enabled ? #1ED760 : #FFFFFF;
-                        bg-color: lyrics-enabled ? #1ED76022 : transparent;
-                        border-col: lyrics-enabled ? #1ED76055 : transparent;
-                        radius: 6px;
-                        opacity: lyrics-enabled || self.has-hover ? 1.0 : 0.45;
-                        clicked => { root.toggle-lyrics(); }
+                    // Left Branding Pill
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+
+                        Rectangle {
+                            width: 6px;
+                            height: 6px;
+                            y: (parent.height - self.height) / 2;
+                            border-radius: 3px;
+                            background: root.expanded-page == 1 ? #10B981 : (root.is-playing ? #1ED760 : #38BDF8);
+                            animate background { duration: 250ms; }
+                        }
+
+                        Text {
+                            visible: root.expanded-page == 1 || root.lyrics-enabled;
+                            min-width: 0px;
+                            max-width: (root.expanded-page == 1 || root.lyrics-enabled) ? 120px : 0px;
+                            overflow: elide;
+                            text: root.expanded-page == 1 ? "JADWAL SHOLAT" : "FIDRA ISLAND";
+                            font-size: 10px;
+                            font-weight: 800;
+                            color: #64748B;
+                            letter-spacing: 0.8px;
+                            vertical-alignment: center;
+                        }
                     }
 
-                    pin-btn := IconButton {
-                        button-size: 22px;
-                        icon-size: 11px;
-                        icon-source: @image-url("../assets/icons/pin.svg");
-                        icon-color: is-pinned ? #1ED760 : #FFFFFF;
-                        bg-color: is-pinned ? #1ED76022 : transparent;
-                        border-col: is-pinned ? #1ED76055 : transparent;
-                        radius: 6px;
-                        opacity: is-pinned ? 1.0 : (self.has-hover ? 1.0 : 0.45);
-                        clicked => { root.toggle-pinned(); }
+                    // Right: Quick Action Toolbar
+                    top-toolbar := TopToolbar {
+                        y: (parent.height - self.height) / 2;
+                        active-page: root.expanded-page;
+                        lyrics-enabled: root.lyrics-enabled;
+                        romanize-enabled: root.romanize-enabled;
+                        is-pinned: root.is-pinned;
+                        toggle-lyrics => { root.toggle-lyrics(); }
+                        toggle-romanize => { root.toggle-romanize(); }
+                        toggle-pinned => { root.toggle-pinned(); }
+                        toggle-expanded => { root.toggle-expanded(); }
+                    }
+                }
+
+                // Content Viewport: Clean, spacious, zero-collision
+                content-viewport := Rectangle {
+                    x: 20px;
+                    y: 34px;
+                    width: parent.width - 40px;
+                    height: 128px;
+                    clip: true;
+
+                    // Page 0: Music Player & Synced Lyrics
+                    page0 := Rectangle {
+                        x: root.expanded-page == 0 ? 0px : -parent.width - 24px;
+                        y: 0px;
+                        width: parent.width;
+                        height: parent.height;
+                        opacity: root.expanded-page == 0 ? 1.0 : 0.0;
+                        visible: self.opacity > 0.01;
+
+                        animate opacity {
+                            duration: 320ms;
+                            easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
+                        }
+                        animate x {
+                            duration: 380ms;
+                            easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
+                        }
+
+                        HorizontalLayout {
+                            spacing: root.lyrics-enabled ? 24px : 0px;
+                            alignment: root.lyrics-enabled ? stretch : center;
+
+                            player-comp := PlayerColumn {
+                                is-expanded: root.is-expanded;
+                                is-playing: root.is-playing;
+                                track-title: root.track-title;
+                                artist-name: root.artist-name;
+                                album-name: root.album-name;
+                                elapsed-time: root.elapsed-time;
+                                remaining-time: root.remaining-time;
+                                progress: root.progress;
+                                album-art: root.album-art;
+                                has-album-art: root.has-album-art;
+                                ambient-color: root.ambient-color;
+                                toggle-playback => { root.toggle-playback(); }
+                                skip-next => { root.skip-next(); }
+                                skip-previous => { root.skip-previous(); }
+                                seek(val) => { root.seek(val); }
+                            }
+
+                            lyrics-comp := LyricsColumn {
+                                min-width: 0px;
+                                max-width: root.lyrics-enabled ? 100000px : 0px;
+                                is-expanded: root.is-expanded;
+                                lyrics-enabled: root.lyrics-enabled;
+                                romanize-enabled: root.romanize-enabled;
+                                is-playing: root.is-playing;
+                                track-title: root.track-title;
+                                lyric-lines: root.lyric-lines;
+                                lyric-index: root.lyric-index;
+                                lyric-word-before: root.lyric-word-before;
+                                lyric-word-current: root.lyric-word-current;
+                                lyric-word-after: root.lyric-word-after;
+                                has-word-sync: root.has-word-sync;
+                                ambient-color: root.ambient-color;
+                                seek-to-lyric(dir) => { root.seek-to-lyric(dir); }
+                            }
+                        }
                     }
 
-                    collapse-btn := IconButton {
-                        button-size: 22px;
-                        icon-size: 11px;
-                        icon-source: @image-url("../assets/icons/chevron-up.svg");
-                        icon-color: #FFFFFF;
-                        radius: 6px;
-                        opacity: self.has-hover ? 1.0 : 0.45;
-                        clicked => { root.toggle-expanded(); }
+                    // Page 1: Jadwal Sholat Hub
+                    page1 := Rectangle {
+                        x: root.expanded-page == 1 ? 0px : parent.width + 24px;
+                        y: 0px;
+                        width: parent.width;
+                        height: parent.height;
+                        opacity: root.expanded-page == 1 ? 1.0 : 0.0;
+                        visible: self.opacity > 0.01;
+
+                        animate opacity {
+                            duration: 320ms;
+                            easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
+                        }
+                        animate x {
+                            duration: 380ms;
+                            easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
+                        }
+
+                        prayer-comp := PrayerCard {
+                            width: 100%;
+                            height: 100%;
+                            prayer-name: root.prayer-name;
+                            prayer-countdown: root.prayer-countdown;
+                            prayer-alert: root.prayer-alert;
+                            schedule: root.prayer-schedule;
+                            scroll-page(page) => {
+                                root.expanded-page = page;
+                                root.page-changed(page);
+                            }
+                        }
+                    }
+                }
+
+                // Bottom Floating Page Indicator & Interactive Capsule
+                page-switcher := PageSwitcher {
+                    x: (parent.width - self.width) / 2;
+                    y: parent.height - self.height - 4px;
+                    active-page: root.expanded-page;
+                    set-page(page) => {
+                        root.expanded-page = page;
+                        root.page-changed(page);
                     }
                 }
             }

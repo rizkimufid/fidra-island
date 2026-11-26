@@ -8,6 +8,8 @@ publish = false
 
 [dependencies]
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+kakasi = "0.1.0"
+pinyin = { version = "0.11", default-features = false, features = ["with_tone"] }
 regex = "1.13.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"

@@ -10,6 +10,7 @@ mod logging;
 mod lyrics;
 mod media;
 mod platform;
+mod prayer;
 
 slint::include_modules!();
 

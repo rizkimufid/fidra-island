@@ -9,9 +9,17 @@ use windows::Media::Control::{
 };
 use windows::Storage::Streams::DataReader;
 
+/// Returns `true` when `FIDRA_SYNC_DEBUG=1` is set; enables verbose timeline logging
+/// used to diagnose browser-specific lyric desync.
+fn sync_debug_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var("FIDRA_SYNC_DEBUG").is_ok_and(|v| v == "1"))
+}
+
 /// Windows GSMTC media controller bound to a background worker thread.
 pub struct MediaController {
     manager: Option<GlobalSystemMediaTransportControlsSessionManager>,
+    last_manager_attempt: Option<Instant>,
     session: Option<GlobalSystemMediaTransportControlsSession>,
     last_thumb_key: String,
     has_sent_thumbnail: bool,
@@ -35,6 +43,7 @@ impl MediaController {
             .and_then(|op| op.get().ok());
         Self {
             manager,
+            last_manager_attempt: None,
             session: None,
             last_thumb_key: String::new(),
             has_sent_thumbnail: false,
@@ -56,14 +65,60 @@ impl MediaController {
         let manager = match &self.manager {
             Some(m) => m,
             None => {
+                let now = Instant::now();
+                if self
+                    .last_manager_attempt
+                    .map(|t| now.duration_since(t).as_secs() < 5)
+                    .unwrap_or(false)
+                {
+                    return Ok(MediaSnapshot::default());
+                }
+                self.last_manager_attempt = Some(now);
                 self.manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
                     .ok()
                     .and_then(|op| op.get().ok());
-                self.manager.as_ref().ok_or(())?
+                match &self.manager {
+                    Some(m) => m,
+                    None => return Ok(MediaSnapshot::default()),
+                }
             }
         };
 
-        let session = manager.GetCurrentSession().ok();
+        // 1. Check designated current session
+        let mut session = manager.GetCurrentSession().ok();
+
+        // 2. Check if current session is actively playing
+        let is_current_playing = session
+            .as_ref()
+            .and_then(|s| s.GetPlaybackInfo().ok())
+            .and_then(|i| i.PlaybackStatus().ok())
+            == Some(GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing);
+
+        // 3. If not actively playing, scan all available sessions
+        if !is_current_playing {
+            if let Ok(sessions) = manager.GetSessions() {
+                let mut fallback_session = None;
+                for s in sessions {
+                    if let Ok(info) = s.GetPlaybackInfo() {
+                        if let Ok(status) = info.PlaybackStatus() {
+                            if status
+                                == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing
+                            {
+                                session = Some(s);
+                                fallback_session = None;
+                                break;
+                            } else if fallback_session.is_none() {
+                                fallback_session = Some(s);
+                            }
+                        }
+                    }
+                }
+                if session.is_none() {
+                    session = fallback_session;
+                }
+            }
+        }
+
         self.session = session;
 
         let session = match &self.session {
@@ -111,6 +166,11 @@ impl MediaController {
 
         let timeline_read_at = Instant::now();
         let mut timeline_sample = None;
+        // Diagnostics: raw GSMTC values before our own extrapolation.
+        let mut diag_raw_pos: Option<f32> = None;
+        let mut diag_updated: Option<i64> = None;
+        let mut diag_age = 0.0f32;
+        let prev_timeline_updated = self.last_timeline_updated;
         if let Ok(timeline) = session.GetTimelineProperties() {
             if let Ok(end) = timeline.EndTime() {
                 let duration = (end.Duration as f32) / 10_000_000.0;
@@ -121,10 +181,12 @@ impl MediaController {
 
             if let Ok(pos) = timeline.Position() {
                 let mut reported_pos = (pos.Duration as f32) / 10_000_000.0;
+                diag_raw_pos = Some(reported_pos);
                 let sample_updated = timeline
                     .LastUpdatedTime()
                     .ok()
                     .map(|updated| updated.UniversalTime);
+                diag_updated = sample_updated;
 
                 if snapshot.is_playing {
                     if let Some(updated_ticks) = sample_updated {
@@ -141,6 +203,7 @@ impl MediaController {
                         let updated_ticks = updated_ticks as u64;
                         if now_ticks > updated_ticks {
                             let age_seconds = ((now_ticks - updated_ticks) as f32) / 10_000_000.0;
+                            diag_age = age_seconds;
                             if age_seconds < 86400.0 {
                                 reported_pos += age_seconds;
                             }
@@ -292,6 +355,27 @@ impl MediaController {
         };
         self.position_anchor = Some((position, now));
         snapshot.elapsed_seconds = position;
+
+        if sync_debug_enabled() {
+            let source = session
+                .SourceAppUserModelId()
+                .map(|s| s.to_string())
+                .unwrap_or_default();
+            crate::logging::info(
+                "media::sync",
+                format!(
+                    "src={source} playing={} raw_pos={:?} last_updated={:?} age={:.2}s \
+                     new_sample={} estimated={:.2}s duration={:.1}s",
+                    snapshot.is_playing,
+                    diag_raw_pos,
+                    diag_updated,
+                    diag_age,
+                    self.last_timeline_updated != prev_timeline_updated,
+                    position,
+                    duration,
+                ),
+            );
+        }
 
         Ok(snapshot)
     }

@@ -28,13 +28,13 @@ export component PlayerColumn inherits VerticalLayout {
 
     width: 240px;
     height: 100%;
-    spacing: 12px;
+    spacing: 8px;
     alignment: center;
 
     // Wave 1: Album Art + Track Title & Artist
     Rectangle {
         width: 100%;
-        height: 54px;
+        height: 48px;
 
         HorizontalLayout {
             x: 0;
@@ -51,9 +51,9 @@ export component PlayerColumn inherits VerticalLayout {
             }
 
             Rectangle {
-                width: 54px;
-                height: 54px;
-                border-radius: 12px;
+                width: 48px;
+                height: 48px;
+                border-radius: 10px;
                 background: #181B24;
                 border-width: 1px;
                 border-color: #2B3040;
@@ -72,8 +72,8 @@ export component PlayerColumn inherits VerticalLayout {
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;
                     source: @image-url("../../assets/icons/music.svg");
-                    width: 22px;
-                    height: 22px;
+                    width: 20px;
+                    height: 20px;
                     colorize: #717687;
                     image-fit: contain;
                 }
@@ -87,7 +87,7 @@ export component PlayerColumn inherits VerticalLayout {
                 Text {
                     text: root.track-title;
                     color: #FFFFFF;
-                    font-size: 14.5px;
+                    font-size: 14px;
                     font-weight: 700;
                     overflow: elide;
                 }
@@ -95,7 +95,7 @@ export component PlayerColumn inherits VerticalLayout {
                 Text {
                     text: root.artist-name + (root.album-name != "" ? " • " + root.album-name : "");
                     color: #A1A1AA;
-                    font-size: 12px;
+                    font-size: 11.5px;
                     font-weight: 500;
                     overflow: elide;
                 }
@@ -106,7 +106,7 @@ export component PlayerColumn inherits VerticalLayout {
     // Wave 2: Full Width Progress Bar + Timestamps
     Rectangle {
         width: 100%;
-        height: 16px;
+        height: 14px;
 
         HorizontalLayout {
             x: 0;
@@ -172,7 +172,7 @@ export component PlayerColumn inherits VerticalLayout {
     // Wave 3: Playback Controls
     Rectangle {
         width: 100%;
-        height: 42px;
+        height: 38px;
 
         HorizontalLayout {
             x: 0;
@@ -180,7 +180,7 @@ export component PlayerColumn inherits VerticalLayout {
             width: 100%;
             height: 100%;
             alignment: center;
-            spacing: 20px;
+            spacing: 18px;
             opacity: root.is-expanded ? 1.0 : 0.0;
 
             animate y, opacity {
@@ -191,28 +191,28 @@ export component PlayerColumn inherits VerticalLayout {
 
             prev-btn := IconButton {
                 y: (parent.height - self.height) / 2;
-                button-size: 32px;
-                icon-size: 17px;
+                button-size: 30px;
+                icon-size: 15px;
                 icon-source: @image-url("../../assets/icons/skip-back.svg");
                 icon-color: #FFFFFF;
-                radius: 16px;
+                radius: 15px;
                 clicked => { root.skip-previous(); }
             }
 
             play-btn := PlayPauseButton {
                 y: (parent.height - self.height) / 2;
                 is-playing: root.is-playing;
-                button-size: 40px;
+                button-size: 38px;
                 clicked => { root.toggle-playback(); }
             }
 
             next-btn := IconButton {
                 y: (parent.height - self.height) / 2;
-                button-size: 32px;
-                icon-size: 17px;
+                button-size: 30px;
+                icon-size: 15px;
                 icon-source: @image-url("../../assets/icons/skip-forward.svg");
                 icon-color: #FFFFFF;
-                radius: 16px;
+                radius: 15px;
                 clicked => { root.skip-next(); }
             }
         }

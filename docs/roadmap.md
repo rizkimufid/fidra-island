@@ -30,9 +30,11 @@ This roadmap tracks the prioritized milestones to take **Fidra Island** from `v0
 - [x] **Automated Release Pipeline:** Inno Setup script (`packaging/installer.iss`) and GitHub Actions release workflow (`.github/workflows/release.yml`) building portable ZIP, installer setup executable, and SHA-256 checksums.
 
 ## Phase 5 — Living Companion & Multi-Widget Architecture (Active)
-- [ ] **Adaptive Cover Art Ambience:** Dominant vibrant color extraction from thumbnail bytes in Rust, driving dynamic ambient surface lighting and specular hardware top-rim in Slint.
-- [ ] **Kinetic Waterfall Lyric Stream:** Continuous vertical scrolling with incoming line scale-up (`12px -> 15.5px bold`, `opacity: 0.4 -> 1.0`) and outgoing line scale-down (`15.5px -> 12px`, `opacity: 1.0 -> 0.4`) on deceleration spring curve.
-- [ ] **Strict < 500 Lines Modularization:** Decompose `src/lyrics.rs`, `src/app.rs`, `src/platform/windows.rs`, and `ui/main.slint` into modular submodules under 500 lines.
+- [x] **Adaptive Cover Art Ambience:** Dominant vibrant color extraction from thumbnail bytes in Rust, driving dynamic ambient surface lighting and specular hardware top-rim in Slint.
+- [x] **Kinetic Waterfall Lyric Stream:** Continuous vertical scrolling ribbon with active line prominence and smooth deceleration glide.
+- [x] **Strict < 500 Lines Modularization:** Decomposed `src/lyrics/`, `src/app/`, `src/platform/windows/`, and `ui/main.slint` into modular submodules under 500 lines.
+- [x] **Custom Bundled Typography:** Embedded Plus Jakarta Sans (default UI) and LINE Seed JP (Japanese lyrics) via SIL OFL 1.1 fonts.
+- [x] **CJK Transliteration (Romaji/Pinyin/Hangul Latin):** Auto-romanize East Asian scripts into readable subtitles with persistent toolbar toggle.
+- [x] **Prayer Times Widget (Jadwal Sholat):** Offline astronomical prayer calculation (Kemenag / MWL method), next-prayer pill countdown, and adhan temporary notification pulse.
 - [ ] **Hydration Widget (Reminder Minum):** Configurable interval timer (e.g. 45-60m), dynamic droplet alert banner pulse, and daily habit ring progress.
-- [ ] **Prayer Times Widget (Jadwal Sholat):** Offline astronomical prayer calculation (Kemenag / MWL method), next-prayer pill countdown, and adhan temporary notification pulse.
 - [ ] **Daily Task Checklist:** Lightweight local to-do checklist in expanded widget hub with persistent `%APPDATA%\FidraIsland\tasks.json`.

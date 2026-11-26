@@ -2,6 +2,7 @@
 //! zero-CPU idle timers, and system tray action handling.
 
 mod callbacks;
+mod state;
 
 use std::{
     cell::{Cell, RefCell},
@@ -18,23 +19,19 @@ use std::{
 use slint::{ComponentHandle, Timer, TimerMode};
 
 use crate::{
-    app::callbacks::{persist_config, wire_ui_callbacks},
+    app::{
+        callbacks::{persist_config, wire_ui_callbacks},
+        state::{apply_snapshot, update_system_status, SystemStatusCache},
+    },
     config, logging,
     lyrics::{self, LyricContext},
-    media::{MediaCommand, MediaController, MediaSnapshot, ThumbnailUpdate},
+    media::{MediaCommand, MediaController},
     platform::{self, TrayAction, COMPACT_LYRIC_MAX_WIDTH, COMPACT_LYRIC_MIN_WIDTH},
-    MainWindow,
+    LyricRow, MainWindow,
 };
 
 /// Maximum cached tracks held in the in-memory lyric lookup cache.
 const LYRIC_CACHE_CAPACITY: usize = 64;
-
-#[derive(Default)]
-struct SystemStatusCache {
-    time_str: String,
-    battery_pct: Option<u8>,
-    is_charging: Option<bool>,
-}
 
 /// Boots the Slint UI, spawns background workers, registers Win32 hit-test & tray,
 /// and runs the main event loop until quit.
@@ -54,6 +51,8 @@ pub fn run() -> Result<(), slint::PlatformError> {
     // Apply persisted user preferences at startup.
     window.set_lyrics_enabled(initial_cfg.lyrics_enabled);
     window.set_is_pinned(initial_cfg.is_pinned);
+    window.set_romanize_enabled(initial_cfg.romanize_enabled);
+    window.set_prayer_enabled(initial_cfg.prayer_enabled);
     platform::set_lyrics_enabled(initial_cfg.lyrics_enabled);
     platform::set_startup_state(initial_cfg.launch_at_startup);
 
@@ -267,8 +266,19 @@ pub fn run() -> Result<(), slint::PlatformError> {
                     // Full lyric list is pushed only when the track/lyrics change; the
                     // ribbon then scrolls smoothly by animating `lyric-index`.
                     if let Some(lines) = lines_update {
-                        let items: Vec<slint::SharedString> =
-                            lines.into_iter().map(Into::into).collect();
+                        let items: Vec<LyricRow> = lines
+                            .into_iter()
+                            .map(|text| {
+                                let roman = lyrics::romanize_line(&text);
+                                let has_roman = roman.is_some();
+                                LyricRow {
+                                    jp: lyrics::is_japanese(&text),
+                                    text: text.into(),
+                                    roman: roman.unwrap_or_default().into(),
+                                    has_roman,
+                                }
+                            })
+                            .collect();
                         w.set_lyric_lines(slint::ModelRc::new(slint::VecModel::from(items)));
                     }
                     w.set_lyric_index(lyric_index);
@@ -377,93 +387,4 @@ pub fn run() -> Result<(), slint::PlatformError> {
     platform::remove_tray_icon();
     logging::info("app", "Fidra Island exited cleanly");
     result
-}
-
-fn apply_snapshot(window: &MainWindow, snapshot: MediaSnapshot) {
-    let duration = snapshot.duration_seconds.max(0.0);
-    let elapsed = if duration > 0.0 {
-        snapshot.elapsed_seconds.clamp(0.0, duration)
-    } else {
-        snapshot.elapsed_seconds.max(0.0)
-    };
-    let progress = if duration > 0.0 {
-        elapsed / duration
-    } else {
-        0.0
-    };
-    let remaining = (duration - elapsed).max(0.0);
-
-    window.set_track_title(snapshot.title.into());
-    window.set_artist_name(snapshot.artist.into());
-    window.set_album_name(snapshot.album.into());
-    window.set_elapsed_time(format_time(elapsed).into());
-    window.set_duration_time(format_time(duration).into());
-    window.set_remaining_time(
-        if duration > 0.0 {
-            format!("-{}", format_time(remaining))
-        } else {
-            "—".to_string()
-        }
-        .into(),
-    );
-    window.set_duration_seconds(duration);
-    window.set_progress(progress);
-    window.set_is_playing(snapshot.is_playing);
-
-    // Update dominant ambient accent color
-    let (r, g, b) = snapshot.ambient_color;
-    window.set_ambient_color(slint::Color::from_rgb_u8(r, g, b));
-
-    match snapshot.thumbnail {
-        ThumbnailUpdate::Unchanged => {}
-        ThumbnailUpdate::Cleared => {
-            window.set_has_album_art(false);
-        }
-        ThumbnailUpdate::Updated(thumb_bytes) => {
-            if let Ok(img) = slint::Image::load_from_data(&thumb_bytes, None) {
-                window.set_album_art(img);
-                window.set_has_album_art(true);
-            } else {
-                window.set_has_album_art(false);
-            }
-        }
-    }
-}
-
-fn update_system_status(window: &MainWindow, cache: &mut SystemStatusCache) {
-    let status = platform::query_system_status();
-    if cache.time_str != status.time_str {
-        cache.time_str = status.time_str.clone();
-        window.set_current_time_str(status.time_str.into());
-    }
-    if cache.battery_pct != Some(status.battery_pct) {
-        cache.battery_pct = Some(status.battery_pct);
-        let pct = status.battery_pct as f32 / 100.0;
-        window.set_battery_level(pct);
-        window.set_battery_arc_path(platform::get_battery_arc_path(pct).into());
-    }
-    if cache.is_charging != Some(status.is_charging) {
-        cache.is_charging = Some(status.is_charging);
-        window.set_is_charging(status.is_charging);
-    }
-}
-
-/// Formats a non-negative duration in seconds as `MM:SS`.
-pub(crate) fn format_time(seconds: f32) -> String {
-    let seconds = seconds.max(0.0).round() as u32;
-    format!("{:02}:{:02}", seconds / 60, seconds % 60)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn format_time_clamps_negative_and_formats_mm_ss() {
-        assert_eq!(format_time(-5.0), "00:00");
-        assert_eq!(format_time(0.0), "00:00");
-        assert_eq!(format_time(65.4), "01:05");
-        assert_eq!(format_time(65.6), "01:06");
-        assert_eq!(format_time(3661.0), "61:01");
-    }
 }

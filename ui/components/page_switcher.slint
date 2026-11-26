@@ -1,0 +1,165 @@
+// Fidra Island — Bottom Dynamic Page Indicator & Interactive Capsule
+// Resting: Minimal iOS-style pagination pill dots.
+// Hovered: Smoothly expands into micro-capsule with interactive Musik & Sholat icons.
+
+export component PageSwitcher inherits Rectangle {
+    in property <int> active-page: 0;
+    out property <bool> has-hover: hover-area.has-hover || touch-m.has-hover || touch-p.has-hover;
+    callback set-page(int);
+
+    private property <bool> is-hovered: self.has-hover;
+
+    width: self.is-hovered ? 68px : 36px;
+    height: self.is-hovered ? 22px : 14px;
+    border-radius: self.height / 2;
+    background: self.is-hovered ? #141722EE : transparent;
+    border-width: self.is-hovered ? 1px : 0px;
+    border-color: #262B3B;
+    clip: true;
+
+    animate width, height, border-radius, background, border-color {
+        duration: 200ms;
+        easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
+    }
+
+    // TouchArea wrapping the capsule for hover detection and scroll
+    hover-area := TouchArea {
+        width: 100%;
+        height: 100%;
+        scroll-event(event) => {
+            if event.delta-y < 0px || event.delta-x < 0px {
+                root.set-page(1);
+            } else if event.delta-y > 0px || event.delta-x > 0px {
+                root.set-page(0);
+            }
+            accept
+        }
+    }
+
+    // State A: Resting Minimal Pagination Dots
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        opacity: root.is-hovered ? 0.0 : 1.0;
+        visible: self.opacity > 0.01;
+
+        animate opacity {
+            duration: 160ms;
+            easing: ease-out;
+        }
+
+        HorizontalLayout {
+            alignment: center;
+            spacing: 5px;
+
+            // Dot 0: Musik
+            Rectangle {
+                width: root.active-page == 0 ? 12px : 4px;
+                height: 4px;
+                y: (parent.height - self.height) / 2;
+                border-radius: 2px;
+                background: root.active-page == 0 ? #38BDF8 : #47556988;
+
+                animate width, background {
+                    duration: 200ms;
+                    easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
+                }
+            }
+
+            // Dot 1: Sholat
+            Rectangle {
+                width: root.active-page == 1 ? 12px : 4px;
+                height: 4px;
+                y: (parent.height - self.height) / 2;
+                border-radius: 2px;
+                background: root.active-page == 1 ? #10B981 : #47556988;
+
+                animate width, background {
+                    duration: 200ms;
+                    easing: cubic-bezier(0.22, 1.0, 0.36, 1.0);
+                }
+            }
+        }
+    }
+
+    // State B: Hovered Interactive Icon Capsule
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        opacity: root.is-hovered ? 1.0 : 0.0;
+        visible: self.opacity > 0.01;
+
+        animate opacity {
+            duration: 180ms;
+            easing: ease-out;
+        }
+
+        HorizontalLayout {
+            padding: 2px;
+            spacing: 4px;
+            alignment: center;
+
+            // Icon 0: Musik
+            btn-m := Rectangle {
+                width: 28px;
+                height: 18px;
+                border-radius: 9px;
+                background: root.active-page == 0 ? #38BDF828 : (touch-m.has-hover ? #FFFFFF14 : transparent);
+                border-width: root.active-page == 0 ? 1px : 0px;
+                border-color: #38BDF855;
+
+                animate background, border-color {
+                    duration: 140ms;
+                    easing: ease-out;
+                }
+
+                Image {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    width: 11px;
+                    height: 11px;
+                    source: @image-url("../../assets/icons/music.svg");
+                    colorize: root.active-page == 0 ? #38BDF8 : #94A3B8;
+                }
+
+                touch-m := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.set-page(0);
+                    }
+                }
+            }
+
+            // Icon 1: Sholat
+            btn-p := Rectangle {
+                width: 28px;
+                height: 18px;
+                border-radius: 9px;
+                background: root.active-page == 1 ? #10B98128 : (touch-p.has-hover ? #FFFFFF14 : transparent);
+                border-width: root.active-page == 1 ? 1px : 0px;
+                border-color: #10B98155;
+
+                animate background, border-color {
+                    duration: 140ms;
+                    easing: ease-out;
+                }
+
+                Image {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    width: 11px;
+                    height: 11px;
+                    source: @image-url("../../assets/icons/moon.svg");
+                    colorize: root.active-page == 1 ? #10B981 : #94A3B8;
+                }
+
+                touch-p := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.set-page(1);
+                    }
+                }
+            }
+        }
+    }
+}

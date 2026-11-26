@@ -82,8 +82,8 @@ pub unsafe extern "system" fn window_proc(
             let logical_x = (pt.x as f32 / scale).round() as i32;
             let logical_y = (pt.y as f32 / scale).round() as i32;
 
-            let (is_exp, is_hov, show_lyrics, lyrics_enabled, lyric_w) = hit_test_flags();
-            let island_w = if is_exp && lyrics_enabled {
+            let (is_exp, is_hov, show_lyrics, lyrics_enabled, lyric_w, exp_page) = hit_test_flags();
+            let island_w = if is_exp && (exp_page == 1 || lyrics_enabled) {
                 EXPANDED_LYRICS_WIDTH
             } else if is_exp {
                 EXPANDED_WIDTH
@@ -98,7 +98,7 @@ pub unsafe extern "system" fn window_proc(
                 COMPACT_WIDTH
             };
             let island_h = if is_exp {
-                EXPANDED_HEIGHT
+                EXPANDED_HEIGHT + 4
             } else {
                 COMPACT_HEIGHT
             };

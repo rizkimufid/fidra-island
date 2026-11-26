@@ -1,0 +1,77 @@
+// Fidra Island — Adaptive top-right quick action toolbar
+
+import { IconButton } from "controls.slint";
+
+export component TopToolbar inherits Rectangle {
+    in property <int> active-page: 0;
+    in property <bool> lyrics-enabled: false;
+    in property <bool> romanize-enabled: true;
+    in property <bool> is-pinned: false;
+    out property <bool> has-hover:
+        (root.active-page == 0 && lyrics-btn.has-hover)
+        || (root.active-page == 0 && root.lyrics-enabled && roman-btn.has-hover)
+        || pin-btn.has-hover
+        || collapse-btn.has-hover;
+
+    callback toggle-lyrics();
+    callback toggle-romanize();
+    callback toggle-pinned();
+    callback toggle-expanded();
+
+    background: transparent;
+
+    HorizontalLayout {
+        spacing: 3px;
+        alignment: end;
+
+        // Lyrics toggle (only on Music page)
+        lyrics-btn := IconButton {
+            button-size: root.active-page == 0 ? 22px : 0px;
+            visible: root.active-page == 0;
+            icon-size: root.active-page == 0 ? 13px : 0px;
+            icon-source: @image-url("../../assets/icons/lyrics.svg");
+            icon-color: root.lyrics-enabled ? #1ED760 : #FFFFFF;
+            bg-color: root.lyrics-enabled ? #1ED76022 : transparent;
+            border-col: root.lyrics-enabled ? #1ED76055 : transparent;
+            radius: 6px;
+            opacity: root.lyrics-enabled || self.has-hover ? 1.0 : 0.45;
+            clicked => { root.toggle-lyrics(); }
+        }
+
+        // Romanize toggle (only on Music page when lyrics are active)
+        roman-btn := IconButton {
+            button-size: (root.active-page == 0 && root.lyrics-enabled) ? 22px : 0px;
+            visible: root.active-page == 0 && root.lyrics-enabled;
+            icon-size: (root.active-page == 0 && root.lyrics-enabled) ? 12px : 0px;
+            icon-source: @image-url("../../assets/icons/languages.svg");
+            icon-color: root.romanize-enabled ? #38BDF8 : #FFFFFF;
+            bg-color: root.romanize-enabled ? #38BDF822 : transparent;
+            border-col: root.romanize-enabled ? #38BDF855 : transparent;
+            radius: 6px;
+            opacity: root.romanize-enabled || self.has-hover ? 1.0 : 0.45;
+            clicked => { root.toggle-romanize(); }
+        }
+
+        pin-btn := IconButton {
+            button-size: 22px;
+            icon-size: 11px;
+            icon-source: @image-url("../../assets/icons/pin.svg");
+            icon-color: root.is-pinned ? #1ED760 : #FFFFFF;
+            bg-color: root.is-pinned ? #1ED76022 : transparent;
+            border-col: root.is-pinned ? #1ED76055 : transparent;
+            radius: 6px;
+            opacity: root.is-pinned ? 1.0 : (self.has-hover ? 1.0 : 0.45);
+            clicked => { root.toggle-pinned(); }
+        }
+
+        collapse-btn := IconButton {
+            button-size: 22px;
+            icon-size: 11px;
+            icon-source: @image-url("../../assets/icons/chevron-up.svg");
+            icon-color: #FFFFFF;
+            radius: 6px;
+            opacity: self.has-hover ? 1.0 : 0.45;
+            clicked => { root.toggle-expanded(); }
+        }
+    }
+}

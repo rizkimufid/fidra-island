@@ -8,7 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// User-configurable persistent settings for Fidra Island.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
     /// Whether synced lyrics display is enabled.
@@ -17,6 +17,31 @@ pub struct AppConfig {
     pub is_pinned: bool,
     /// Whether Fidra Island launches automatically at Windows sign-in.
     pub launch_at_startup: bool,
+    /// Whether CJK transliteration (Romaji/Pinyin/Hangul Latin) is enabled.
+    pub romanize_enabled: bool,
+    /// Whether the Islamic prayer countdown banner/pill is enabled.
+    pub prayer_enabled: bool,
+    /// Latitude for prayer calculation (default: -6.2088 Jakarta).
+    pub latitude: f64,
+    /// Longitude for prayer calculation (default: 106.8456 Jakarta).
+    pub longitude: f64,
+    /// Timezone UTC offset in hours (default: +7.0 WIB).
+    pub timezone_offset: f64,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            lyrics_enabled: false,
+            is_pinned: false,
+            launch_at_startup: false,
+            romanize_enabled: true,
+            prayer_enabled: true,
+            latitude: -6.2088,
+            longitude: 106.8456,
+            timezone_offset: 7.0,
+        }
+    }
 }
 
 /// Returns the default configuration file path (`%APPDATA%\FidraIsland\config.json` on Windows).
@@ -71,6 +96,11 @@ mod tests {
             lyrics_enabled: true,
             is_pinned: true,
             launch_at_startup: false,
+            romanize_enabled: true,
+            prayer_enabled: true,
+            latitude: -6.2088,
+            longitude: 106.8456,
+            timezone_offset: 7.0,
         };
 
         save_to(&path, &original).expect("save config");

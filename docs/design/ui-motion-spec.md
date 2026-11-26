@@ -10,7 +10,7 @@ This document is the **Single Source of Truth** for Fidra Island's visual design
 |---|---:|---:|---:|---:|---:|
 | **Root Window** | `680 x 220` | `680 x 220` | `680 x 220` | `680 x 220` | `680 x 220` |
 | **Island Width** | `290px` | `310px` | `280px – 420px` | `320px` | `610px` |
-| **Island Height** | `38px` | `38px` | `38px` | `174px` (`175px` hit-test) | `174px` (`175px` hit-test) |
+| **Island Height** | `38px` | `38px` | `38px` | `184px` (`184px` hit-test) | `184px` (`184px` hit-test) |
 | **Bottom Radius** | `19px` | `19px` | `19px` | `26px` | `26px` |
 | **Ear Flares (L/R)** | `14 x 14px` | `14 x 14px` | `14 x 14px` | `14 x 14px` | `14 x 14px` |
 
@@ -56,6 +56,10 @@ This document is the **Single Source of Truth** for Fidra Island's visual design
   - Incoming active line rolls up `y: +18px -> 0px`, scaling up from `12px` to `15.5px` bold and fading `opacity: 0.4 -> 1.0`.
   - Outgoing previous line rolls up `y: 0px -> -18px`, scaling down from `15.5px` to `12px` and dimming `opacity: 1.0 -> 0.4`.
   - Deceleration easing: `cubic-bezier(0.16, 1.0, 0.3, 1.0)` over `340ms`.
+- **Expanded Carousel Slider (Page 0: Media / Page 1: Jadwal Sholat):**
+  - **Horizontal Slide:** `340ms` duration with `cubic-bezier(0.22, 1.0, 0.36, 1.0)` easing. Page 0 slides `0px -> -parent.width`, Page 1 slides `parent.width -> 0px`.
+  - **Pagination Indicators:** Interactive pill dots at bottom center (`14px` active pill vs `5px` inactive dot) with emerald `#10B981` highlight for prayer mode.
+  - **Toolbar Shortcut:** Moon icon button (`assets/icons/moon.svg`) toggles between Page 0 and Page 1 directly.
 - **Contextual Notification Alert Pulse:**
   - Temporary banner expansions (waktu sholat / reminder minum) pop out for 6–8 seconds with spring overshoot, then automatically retract to compact mode.
 - **Tactile Micro-Interactions:**
@@ -72,3 +76,12 @@ This document is the **Single Source of Truth** for Fidra Island's visual design
 - **Tangential Ear Flares:** Locked inside `island-wrapper` with `1px` overlap into `island`:
   - Left: `M 0 0 C 8 0 14 5 14 14 L 14 0 Z`
   - Right: `M 0 0 L 0 14 C 0 5 6 0 14 0 Z`
+
+## Typography
+
+| Use | Family | Weights |
+|---|---|---|
+| All UI text (default) | Plus Jakarta Sans | Regular (400), Bold (700) |
+| Lyric lines containing Japanese script | LINE Seed JP | Regular (400), Bold (700) |
+
+Fonts are bundled in `assets/fonts/` (SIL OFL 1.1, license files alongside) and registered via `import` in `ui/main.slint`. Requested weights 500/600 resolve to the nearest bundled weight. Japanese detection is done in Rust (`lyrics::is_japanese`) and passed per line as `LyricRow.jp`.

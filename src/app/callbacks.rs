@@ -85,6 +85,29 @@ pub(crate) fn wire_ui_callbacks(
         }
     });
 
+    let roman_window = window.as_weak();
+    let roman_cfg = Arc::clone(&shared_cfg);
+    window.on_toggle_romanize(move || {
+        if let Some(w) = roman_window.upgrade() {
+            let enabled = !w.get_romanize_enabled();
+            w.set_romanize_enabled(enabled);
+            persist_config(&roman_cfg, |c| c.romanize_enabled = enabled);
+        }
+    });
+
+    let hover_window = window.as_weak();
+    let collapse_timer = Rc::new(RefCell::new(None::<Timer>));
+    let expand_timer = Rc::new(RefCell::new(None::<Timer>));
+
+    let page_timer = Rc::clone(&collapse_timer);
+    window.on_page_changed(move |page| {
+        platform::set_expanded_page(page);
+        // Active scroll interaction cancels any pending collapse timer.
+        if let Some(timer) = page_timer.borrow_mut().take() {
+            timer.stop();
+        }
+    });
+
     let pin_window = window.as_weak();
     let pin_cfg = shared_cfg;
     window.on_toggle_pinned(move || {
@@ -95,22 +118,20 @@ pub(crate) fn wire_ui_callbacks(
         }
     });
 
-    let hover_window = window.as_weak();
-    let collapse_timer = Rc::new(RefCell::new(None::<Timer>));
-    let expand_timer = Rc::new(RefCell::new(None::<Timer>));
-
     let exp_window = window.as_weak();
     let exp_timer = Rc::clone(&collapse_timer);
+    let exp_expand_timer = Rc::clone(&expand_timer);
     window.on_toggle_expanded(move || {
         if let Some(w) = exp_window.upgrade() {
             let next_state = !w.get_is_expanded();
             w.set_is_expanded(next_state);
             platform::set_expanded(next_state);
 
-            if !next_state {
-                if let Some(timer) = exp_timer.borrow_mut().take() {
-                    timer.stop();
-                }
+            if let Some(timer) = exp_timer.borrow_mut().take() {
+                timer.stop();
+            }
+            if let Some(timer) = exp_expand_timer.borrow_mut().take() {
+                timer.stop();
             }
         }
     });
@@ -130,7 +151,7 @@ pub(crate) fn wire_ui_callbacks(
                     let timer = Timer::default();
                     timer.start(
                         TimerMode::SingleShot,
-                        Duration::from_millis(80),
+                        Duration::from_millis(260),
                         move || {
                             if let Some(w) = exp_win.upgrade() {
                                 w.set_is_expanded(true);
@@ -149,7 +170,7 @@ pub(crate) fn wire_ui_callbacks(
                     let timer = Timer::default();
                     timer.start(
                         TimerMode::SingleShot,
-                        Duration::from_millis(250),
+                        Duration::from_millis(500),
                         move || {
                             if let Some(w) = timer_window.upgrade() {
                                 if !w.get_is_pinned() {

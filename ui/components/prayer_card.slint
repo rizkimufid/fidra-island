@@ -1,0 +1,196 @@
+// Fidra Island — Jadwal Sholat (Islamic Prayer Times) Expanded Card
+
+import { PrayerRow } from "types.slint";
+
+export component PrayerCard inherits Rectangle {
+    in property <string> prayer-name: "Maghrib";
+    in property <string> prayer-countdown: "15m";
+    in property <bool> prayer-alert: false;
+    in property <[PrayerRow]> schedule: [];
+    out property <bool> has-hover: card-touch.has-hover;
+    callback scroll-page(int);
+
+    background: transparent;
+
+    card-touch := TouchArea {
+        width: 100%;
+        height: 100%;
+        scroll-event(event) => {
+            if event.delta-y < 0px || event.delta-x < 0px {
+                root.scroll-page(1);
+            } else if event.delta-y > 0px || event.delta-x > 0px {
+                root.scroll-page(0);
+            }
+            accept
+        }
+    }
+
+    VerticalLayout {
+        spacing: 8px;
+
+        // Header Row: City on left, Upcoming countdown badge on right
+        HorizontalLayout {
+            height: 22px;
+            alignment: space-between;
+
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+
+                Image {
+                    width: 13px;
+                    height: 13px;
+                    y: (parent.height - self.height) / 2;
+                    source: @image-url("../../assets/icons/moon.svg");
+                    colorize: #10B981;
+                }
+
+                Text {
+                    text: "JADWAL SHOLAT";
+                    font-size: 11px;
+                    font-weight: 800;
+                    color: #E2E8F0;
+                    letter-spacing: 0.5px;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: "•  DKI Jakarta (WIB)";
+                    font-size: 10px;
+                    font-weight: 500;
+                    color: #64748B;
+                    vertical-alignment: center;
+                }
+            }
+
+            // Countdown Status Pill
+            Rectangle {
+                height: 20px;
+                y: (parent.height - self.height) / 2;
+                border-radius: 10px;
+                background: root.prayer-alert ? #451A03 : #064E3B44;
+                border-width: 1px;
+                border-color: root.prayer-alert ? #F59E0B : #10B98166;
+
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 5px;
+                    alignment: center;
+
+                    Rectangle {
+                        width: 5px;
+                        height: 5px;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: 2.5px;
+                        background: root.prayer-alert ? #F59E0B : #10B981;
+                    }
+
+                    Text {
+                        text: root.prayer-name + " dalam " + root.prayer-countdown;
+                        font-size: 10px;
+                        font-weight: 700;
+                        color: root.prayer-alert ? #FDE68A : #6EE7B7;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        // Prayer Schedule: 6 Cards Row
+        HorizontalLayout {
+            height: 66px;
+            spacing: 6px;
+
+            for item in root.schedule: Rectangle {
+                border-radius: 10px;
+                background: item.is-next ? @linear-gradient(180deg, #10B9812A 0%, #064E3B18 100%) : #12141C80;
+                border-width: 1px;
+                border-color: item.is-next ? #10B981 : #232733;
+
+                animate background, border-color {
+                    duration: 180ms;
+                    easing: ease-out;
+                }
+
+                VerticalLayout {
+                    padding-top: 6px;
+                    padding-bottom: 6px;
+                    alignment: space-between;
+
+                    Text {
+                        text: item.name;
+                        font-size: 10px;
+                        font-weight: 700;
+                        color: item.is-next ? #34D399 : #94A3B8;
+                        horizontal-alignment: center;
+                    }
+
+                    Text {
+                        text: item.time-str;
+                        font-size: 14.5px;
+                        font-weight: 800;
+                        color: item.is-next ? #FFFFFF : #E2E8F0;
+                        horizontal-alignment: center;
+                    }
+
+                    HorizontalLayout {
+                        alignment: center;
+                        height: 11px;
+
+                        if item.is-next: Rectangle {
+                            height: 11px;
+                            border-radius: 5.5px;
+                            background: #10B98133;
+                            border-width: 0.5px;
+                            border-color: #10B98188;
+
+                            HorizontalLayout {
+                                padding-left: 4px;
+                                padding-right: 4px;
+
+                                Text {
+                                    text: "NEXT";
+                                    font-size: 7px;
+                                    font-weight: 800;
+                                    color: #34D399;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+
+                        if !item.is-next: Rectangle {
+                            width: 3px;
+                            height: 3px;
+                            border-radius: 1.5px;
+                            background: #334155;
+                            y: (parent.height - self.height) / 2;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Footer: Method & Precision Information
+        HorizontalLayout {
+            height: 14px;
+            alignment: space-between;
+
+            Text {
+                text: "Kemenag RI • Subuh 20°, Isya 18°, Ihtiyat +2m";
+                font-size: 9px;
+                font-weight: 500;
+                color: #64748B;
+                vertical-alignment: center;
+            }
+
+            Text {
+                text: "Waktu Indonesia Barat";
+                font-size: 9px;
+                font-weight: 500;
+                color: #64748B;
+                vertical-alignment: center;
+            }
+        }
+    }
+}

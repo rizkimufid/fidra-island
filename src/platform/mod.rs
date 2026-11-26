@@ -15,13 +15,14 @@ pub const COMPACT_LYRIC_MIN_WIDTH: f32 = 280.0;
 /// Maximum logical compact island width when displaying a synced lyric line.
 pub const COMPACT_LYRIC_MAX_WIDTH: f32 = 420.0;
 /// Logical expanded island width (player-only).
+#[allow(dead_code)]
 pub const EXPANDED_WIDTH: i32 = 320;
 /// Logical expanded island width (2-column player + lyrics).
 pub const EXPANDED_LYRICS_WIDTH: i32 = 610;
 /// Logical compact island height.
 pub const COMPACT_HEIGHT: i32 = 38;
 /// Logical expanded island height.
-pub const EXPANDED_HEIGHT: i32 = 175;
+pub const EXPANDED_HEIGHT: i32 = 184;
 /// Horizontal width of each tangential top-edge ear flare.
 pub const EAR_FLARE_WIDTH: i32 = 14;
 
@@ -58,6 +59,7 @@ static LYRICS_ENABLED: AtomicBool = AtomicBool::new(false);
 static IS_HIDDEN: AtomicBool = AtomicBool::new(false);
 static LAUNCH_AT_STARTUP: AtomicBool = AtomicBool::new(false);
 static CURRENT_LYRIC_WIDTH: AtomicI32 = AtomicI32::new(COMPACT_WIDTH);
+static EXPANDED_PAGE: AtomicI32 = AtomicI32::new(0);
 
 /// Updates whether the island is currently expanded (used by hit-testing).
 pub fn set_expanded(v: bool) {
@@ -94,14 +96,20 @@ pub fn set_current_lyric_width(w: i32) {
     CURRENT_LYRIC_WIDTH.store(w, Ordering::Relaxed);
 }
 
+/// Updates the active expanded page (0 = music/lyrics, 1 = prayer times).
+pub fn set_expanded_page(page: i32) {
+    EXPANDED_PAGE.store(page, Ordering::Relaxed);
+}
+
 #[cfg(target_os = "windows")]
-pub(crate) fn hit_test_flags() -> (bool, bool, bool, bool, i32) {
+pub(crate) fn hit_test_flags() -> (bool, bool, bool, bool, i32, i32) {
     (
         IS_EXPANDED.load(Ordering::Relaxed),
         IS_HOVERED.load(Ordering::Relaxed),
         SHOW_LYRICS.load(Ordering::Relaxed),
         LYRICS_ENABLED.load(Ordering::Relaxed),
         CURRENT_LYRIC_WIDTH.load(Ordering::Relaxed),
+        EXPANDED_PAGE.load(Ordering::Relaxed),
     )
 }
 

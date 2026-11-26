@@ -17,6 +17,10 @@ export component CompactLayer inherits Rectangle {
     in property <float> eq-bar2: 3.0;
     in property <float> eq-bar3: 3.0;
     in property <float> eq-bar4: 3.0;
+    in property <bool> prayer-enabled: true;
+    in property <string> prayer-name: "";
+    in property <string> prayer-countdown: "";
+    in property <bool> prayer-alert: false;
 
     callback toggle-expanded();
 
@@ -61,6 +65,40 @@ export component CompactLayer inherits Rectangle {
                     text: root.current-time-str;
                     color: #E2E8F0;
                     font-size: 11px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // Prayer Times Countdown Pill (when prayer enabled & not playing / idle)
+        if root.prayer-enabled && root.prayer-name != "" && !root.is-playing: Rectangle {
+            height: 22px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 11px;
+            background: root.prayer-alert ? #451A03 : #141F1A;
+            border-width: 1px;
+            border-color: root.prayer-alert ? #F59E0B : #1E3A2F;
+
+            HorizontalLayout {
+                padding-left: 7px;
+                padding-right: 7px;
+                spacing: 4px;
+                alignment: center;
+
+                Image {
+                    width: 10px;
+                    height: 10px;
+                    y: (parent.height - self.height) / 2;
+                    source: @image-url("../../assets/icons/moon.svg");
+                    colorize: root.prayer-alert ? #FBBF24 : #34D399;
+                    image-fit: contain;
+                }
+
+                Text {
+                    text: root.prayer-name + " " + root.prayer-countdown;
+                    color: root.prayer-alert ? #FDE68A : #D1FAE5;
+                    font-size: 10.5px;
                     font-weight: 700;
                     vertical-alignment: center;
                 }
